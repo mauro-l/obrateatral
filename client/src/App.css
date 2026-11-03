@@ -402,3 +402,59 @@
   padding: 0.7rem 0.85rem;
   font-size: 0.85rem;
 }
+
+.admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.admin-user {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 0.85rem 1rem;
+}
+
+.admin-user-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.admin-user-summary strong {
+  color: var(--text-h);
+}
+
+.admin-role,
+.admin-self {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  color: var(--text-dim);
+}
+
+.admin-self {
+  color: var(--accent-2);
+  border-color: var(--accent-dim);
+}
+
+.admin-user-summary .btn {
+  margin-left: auto;
+}
+
+.admin-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--border-strong);
+}

@@ -45,6 +45,7 @@ export default function Layout() {
           </NavLink>
           <NavLink to="/historial">Historial</NavLink>
           <NavLink to="/cuenta">Mi cuenta</NavLink>
+          {user?.role === 'admin' ? <NavLink to="/admin">Cuentas</NavLink> : null}
 
           {user ? (
             <button className="btn btn-ghost" onClick={logout} title={`Cerrar sesión de ${user.name}`}>

@@ -30,6 +30,10 @@ S9. Auth privada (antes de desplegar).
 S10. Deploy en Render (decisión del usuario). Advertencias: free tier duerme tras 15 min y
      rompe WebSockets; Postgres free expira a los 90 días.
 S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomendaciones.
+S13. Administración de cuentas desde la web (`/admin`, solo `role = "admin"`): crear
+     usuario, renombrarlo y resetear su contraseña. El rol se lee de la DB en cada
+     request (revocar es inmediato). El seed sólo bootstrapea el admin inicial
+     (`SEED_USERS="nombre:clave:admin,..."`); la operación diaria es por la UI.
 S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual, mínimo 6
      caracteres, hash bcrypt nuevo. `db:seed` sólo crea usuarios faltantes y NUNCA
      sobrescribe una contraseña cambiada desde la UI.
@@ -77,6 +81,13 @@ S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual
       separada por comas para CORS. `render.yaml` ya no compila el cliente.
       Verificado: `/api/auth/socket-token` 200 con sesión y 401 sin sesión; en el
       navegador la petición se hace y la sala conecta por token. (S10, S9)
+- [x] T13. Cuentas administradas por la web: `User.role` (migración
+      `20261103225003_add_user_role` con promoción de `mauro`), `server/src/admin.ts`
+      (GET/POST/PATCH /api/admin/users con `requireAdmin`), `/me` devuelve el rol y
+      cae a 401 si la cuenta no existe, página `/admin` con crear/renombrar/resetear
+      y generador de contraseñas, enlace en el nav sólo para admin.
+      Verificado: rename `teff`→`marcos` desde la UI (mismo id, misma clave),
+      creación por API 201, y `marcos` (member) recibe 403 en /api/admin/users. (S13)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
 - [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
@@ -117,6 +128,11 @@ el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (int
 no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
+
+L6 (2026-11-03): el usuario pidió dejar de depender del seed: `mauro` pasa a admin
+y gestiona cuentas desde `/admin` (crear, renombrar, resetear clave). Se aplicó el
+rename `teff`→`marcos` por la UI, preservando el id y la contraseña. `SEED_USERS`
+queda sólo para bootstrapear el admin en una base nueva.
 
 L5 (2026-11-03, deploy Render): el start falló con `sh: 1: tsx: not found` /
 status 127. Causa: `NODE_ENV=production` hace que `npm ci` omita devDependencies y

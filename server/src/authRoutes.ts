@@ -90,6 +90,22 @@ authRouter.get('/socket-token', requireAuth, (req, res) => {
   res.json({ token: signSession({ id: req.user!.sub, name: req.user!.name }, '5m') });
 });
 
-authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ id: req.user!.sub, name: req.user!.name });
+authRouter.get('/me', requireAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, name: true, role: true },
+    });
+
+    if (!user) {
+      // The token is still valid but the account is gone (deleted/renamed DB).
+      res.status(401).json({ error: 'Sesión inválida.' });
+      return;
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('[auth] /me falló:', error);
+    res.status(503).json({ error: 'No disponible por el momento.' });
+  }
 });

@@ -30,12 +30,14 @@ async function main() {
     .filter(Boolean);
 
   for (const entry of seedUsers) {
-    const separator = entry.indexOf(':');
-    const name = separator > 0 ? entry.slice(0, separator).trim() : '';
-    const password = separator > 0 ? entry.slice(separator + 1) : '';
+    // Format: "name:password" or "name:password:role" (role defaults to member).
+    const parts = entry.split(':');
+    const name = (parts[0] ?? '').trim();
+    const password = parts[1] ?? '';
+    const role = (parts[2] ?? 'member').trim() === 'admin' ? 'admin' : 'member';
 
     if (!name || !password) {
-      console.warn(`SEED_USERS: entrada ignorada (formato "nombre:clave"): ${entry}`);
+      console.warn(`SEED_USERS: entrada ignorada (formato "nombre:clave[:rol]"): ${entry}`);
       continue;
     }
 
@@ -44,7 +46,7 @@ async function main() {
       where: { name },
       // Never clobber a password changed through the web UI.
       update: {},
-      create: { name, passwordHash },
+      create: { name, passwordHash, role },
     });
   }
 

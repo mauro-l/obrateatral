@@ -10,6 +10,7 @@ import { Server } from 'socket.io';
 import { prisma } from './db.js';
 import { requireAuth } from './auth.js';
 import { authRouter } from './authRoutes.js';
+import { adminRouter } from './admin.js';
 import { registerRooms, hydrateRooms } from './rooms.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
 
 app.get('/api/plays', requireAuth, async (_req, res) => {
   try {

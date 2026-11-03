@@ -25,7 +25,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type SessionUser = { id: string; name: string };
+export type SessionUser = { id: string; name: string; role: 'admin' | 'member' };
+
+export type AdminUser = { id: string; name: string; role: 'admin' | 'member'; createdAt: string };
 
 export const api = {
   listPlays: () => request<Play[]>('/api/plays'),
@@ -42,4 +44,17 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+  admin: {
+    listUsers: () => request<AdminUser[]>('/api/admin/users'),
+    createUser: (name: string, password: string) =>
+      request<AdminUser>('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify({ name, password }),
+      }),
+    updateUser: (id: string, patch: { name?: string; password?: string }) =>
+      request<{ ok: true }>(`/api/admin/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+  },
 };

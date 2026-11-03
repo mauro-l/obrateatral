@@ -6,6 +6,7 @@ import Home from './pages/Home/Home';
 import Watch from './pages/Watch/Watch';
 import History from './pages/History/History';
 import Account from './pages/Account/Account';
+import Admin from './pages/Admin/Admin';
 import Login from './pages/Login/Login';
 import './App.css';
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/obra/:playId" element={<Watch />} />
             <Route path="/historial" element={<History />} />
             <Route path="/cuenta" element={<Account />} />
+            <Route path="/admin" element={<Admin />} />
           </Route>
         </Routes>
       </BrowserRouter>
