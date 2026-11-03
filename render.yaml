@@ -1,0 +1,39 @@
+# obrateatral — deploy on Render
+#
+# One Node web service (API + Socket.IO + built SPA) and one Postgres.
+# Notes before you deploy:
+#   * plan `starter` for the web service: Render's free tier sleeps after ~15 min
+#     of idle traffic and breaks open WebSocket connections. Two people watching
+#     a 4-hour session will not tolerate that.
+#   * The free Render Postgres plan EXPIRES after 90 days. Either pay for it,
+#     or point DATABASE_URL at a managed Postgres with no expiry (e.g. Supabase
+#     free tier) — then delete the `databases:` block below.
+#   * `free` plan was chosen for the database only on the assumption you know it
+#     expires in 90 days. Change it deliberately.
+
+services:
+  - type: web
+    name: obrateatral
+    runtime: node
+    plan: starter
+    buildCommand: |
+      cd client && npm ci && npm run build && \
+      cd ../server && npm ci && npx prisma generate && npx prisma migrate deploy
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      # openssl rand -hex 32 — never commit this value.
+      - key: SESSION_SECRET
+        sync: false
+      # "Nombre,otro:clave" format below — seed takes "name:password,name2:password2"
+      - key: SEED_USERS
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+
+databases:
+  - name: obrateatral-db
+    plan: free
