@@ -35,9 +35,10 @@ cd ../client && npm install && npm run dev   # http://localhost:5173
 
 Ver `render.yaml`: un web service en Render + **Postgres en Supabase** (externo).
 
-- El cliente mantiene el servicio despierto con `fetch('/health')` cada 5 min
-  mientras haya una pestaña abierta, así una sesión de 4 h no se corta por
-  inactividad en el free tier. El plan `starter` evita el arranque en frío.
+- **Free tier** (decisión del usuario: nunca se paga por un servidor). El servicio
+  duerme tras ~15 min sin tráfico y el primer request paga un arranque en frío de
+  ~30-50 s. El cliente hace `fetch('/health')` cada 5 min mientras haya una pestaña
+  abierta, así una sesión de 4 h no se corta por inactividad.
 - El Postgres va en Supabase porque el free de Render **se elimina a los 90 días**.
   Usá el host del **session pooler** (puerto 5432), no el transaction pooler:
   `prisma migrate` necesita una conexión de sesión.
