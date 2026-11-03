@@ -458,3 +458,42 @@
   padding-top: 0.9rem;
   border-top: 1px dashed var(--border-strong);
 }
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.session-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.session-row:hover,
+.session-row:focus-visible {
+  border-color: var(--accent-dim);
+}
+
+.session-name {
+  color: var(--text-h);
+  font-size: 1.02rem;
+}
+
+.session-min {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}

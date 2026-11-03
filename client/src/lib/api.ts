@@ -1,4 +1,4 @@
-import type { Play, ProgressItem } from './types';
+import type { Session } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -30,8 +30,20 @@ export type SessionUser = { id: string; name: string; role: 'admin' | 'member' }
 export type AdminUser = { id: string; name: string; role: 'admin' | 'member'; createdAt: string };
 
 export const api = {
-  listPlays: () => request<Play[]>('/api/plays'),
-  listProgress: () => request<ProgressItem[]>('/api/progress'),
+  sessions: {
+    list: () => request<Session[]>('/api/sessions'),
+    get: (id: string) => request<Session>(`/api/sessions/${id}`),
+    create: (name: string) =>
+      request<Session>('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+    rename: (id: string, name: string) =>
+      request<Session>(`/api/sessions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      }),
+  },
   me: () => request<SessionUser>('/api/auth/me'),
   login: (name: string, password: string) =>
     request<SessionUser>('/api/auth/login', {

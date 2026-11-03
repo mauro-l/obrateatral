@@ -6,8 +6,7 @@ import { getSocket } from './socket';
 export type Member = { id: string; name: string };
 
 export type RoomView = {
-  roomId: string;
-  playId: string;
+  sessionId: string;
   sourceUrl: string | null;
   sourceExpired: boolean;
   expiresAt: number | null;

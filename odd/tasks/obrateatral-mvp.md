@@ -11,6 +11,10 @@ Risk: security (auth), real-time sync (concurrency), third-party media contract 
 
 ## Specs
 
+> **Cambio de modelo (2026-11-03)**: por pedido del usuario, S1, S5, S6 y S7 quedaron
+> reemplazados por **S15** (modelo de sesiones, sin persistir links). El catálogo fijo
+> de 6 obras, `WatchProgress` por usuario y la tabla `Room` ya no existen.
+
 S1. Catálogo de 6 obras (título, descripción, duración, portada, estado de visualización).
 S2. El video NUNCA es una URL guardada en el repo ni en la DB: cada sesión pega un link
     efímero del estudio (~4 h válido). La sala guarda `source_url` + estado.
@@ -30,6 +34,14 @@ S9. Auth privada (antes de desplegar).
 S10. Deploy en Render (decisión del usuario). Advertencias: free tier duerme tras 15 min y
      rompe WebSockets; Postgres free expira a los 90 días.
 S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomendaciones.
+S15. Modelo (b) — la sesión es la entidad central:
+     - Sólo se persisten `User` y `Session` (nombre libre + `positionSeconds`).
+     - **Ningún link se guarda**: vive en la memoria del servidor y se descarta al
+       vaciarse la sala. Motivo: son links firmados a contenido de terceros.
+     - El reproductor soporta HLS (`.m3u8` + hls.js) y progresivo (`.mp4` directo a
+       `<video src>`, sin CORS).
+     - Si el link declara vencimiento (`s`+`e`), se muestra y se rechaza el vencido;
+       si no lo declara, no se asume nada y sólo se reporta el error del player.
 S14. El link del estudio dice cuándo vence (`s` = emitido, `e` = duración, 14400 s).
      La app lo parsea: muestra la hora de vencimiento, rechaza links ya vencidos al
      cargarlos y descarta de la sala un link vencido (nunca lo sirve al player, que
@@ -101,6 +113,13 @@ S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual
       Verificado: link vencido rechazado (no se guarda), sala con link vencido
       hidratada muestra el aviso y no monta el player, y el link real de obra-1
       quedó intacto. (S14)
+- [x] T15. Modelo de sesiones: migración `sessions_only` (crea `Session`; borra
+      `Play`, `Room` y `WatchProgress` con el link guardado), `server/src/sessions.ts`
+      (GET/POST/PATCH), sala en RAM sin persistir URLs, posición por sesión,
+      reproductor con soporte progresivo, UI con lista de sesiones y
+      `/sesion/:id`. Verificado: HLS (readyState 4) y MP4 (readyState 4, reprodujo)
+      con la posición guardada en `Session`; la tabla no tiene columna de URL.
+      (S15)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
 - [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
@@ -141,6 +160,15 @@ el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (int
 no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
+
+L9 (2026-11-03, verbatim del usuario): "si guardamos links en mi supabase estamos
+comprometiendonos, como te dije pueden ser obras con copyright. yo no quiero tener
+nada que ver con una demanda con nintendo asi que no me parece bueno guardar links
+en mi supabase. [...] vi que tenemos 6 obras, pensaba hacerlas como sesiones.
+ponemos el nombre y vos guardas los min etc etc. nosotros sabemos que estabamos
+viendo y ya". Y luego: "si se pega otro link que no es ese que viste, es probable
+que no contenga los mismos datos en el link [...] puede venir de otro lado".
+Se implementó el modelo (b) con soporte de HLS y MP4. El usuario autorizó con "dale".
 
 L8 (2026-11-03): el usuario detectó que el link queda guardado en `Room.sourceUrl`
 (y por eso el otro navegador entra sin pegarlo) y que vence a las 4 h. Se implementó

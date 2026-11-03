@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-import { plays } from '../src/plays.js';
 import { hashPassword } from '../src/auth.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -13,15 +12,6 @@ const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  // Placeholders until the real catalogue arrives.
-  for (const play of plays) {
-    await prisma.play.upsert({
-      where: { id: play.id },
-      update: play,
-      create: play,
-    });
-  }
-
   // Two fixed private users, from SEED_USERS="name:password,name:password".
   // Passwords are hashed with bcrypt and never stored or logged in plain text.
   const seedUsers = (process.env.SEED_USERS ?? '')
@@ -50,9 +40,8 @@ async function main() {
     });
   }
 
-  const total = await prisma.play.count();
   const users = await prisma.user.count();
-  console.log(`Seeded ${total} play(s) and ${users} user(s).`);
+  console.log(`Seeded ${users} user(s). No sessions are seeded: create them from the web.`);
 }
 
 main().catch((error) => {

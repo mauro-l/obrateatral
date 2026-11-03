@@ -4,10 +4,9 @@ import Layout from './components/Layout/Layout';
 import RequireAuth from './components/RequireAuth/RequireAuth';
 import Home from './pages/Home/Home';
 import Watch from './pages/Watch/Watch';
-import History from './pages/History/History';
+import Login from './pages/Login/Login';
 import Account from './pages/Account/Account';
 import Admin from './pages/Admin/Admin';
-import Login from './pages/Login/Login';
 import './App.css';
 
 export default function App() {
@@ -24,8 +23,7 @@ export default function App() {
             }
           >
             <Route index element={<Home />} />
-            <Route path="/obra/:playId" element={<Watch />} />
-            <Route path="/historial" element={<History />} />
+            <Route path="/sesion/:sessionId" element={<Watch />} />
             <Route path="/cuenta" element={<Account />} />
             <Route path="/admin" element={<Admin />} />
           </Route>

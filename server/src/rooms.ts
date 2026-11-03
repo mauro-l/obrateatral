@@ -5,10 +5,13 @@ import { sessionFromCookieHeader, verifySessionToken } from './auth.js';
 type Member = { userId: string; name: string };
 
 type RoomState = {
-  roomId: string;
-  playId: string;
+  sessionId: string;
+  /**
+   * The studio link. It lives ONLY here, in the server's memory: it is never
+   * written to the database, so no third-party URL is ever persisted. When the
+   * room empties, it is gone.
+   */
   sourceUrl: string | null;
-  /** The stored link exists but already expired; the UI must ask for a new one. */
   sourceExpired: boolean;
   isPlaying: boolean;
   baseTime: number;
@@ -23,10 +26,9 @@ const rooms = new Map<string, RoomState>();
 const LINK_EXPIRY_MARGIN_SECONDS = 120;
 
 /**
- * Studio links carry their own validity in the query string:
- *   s = issued-at (epoch seconds), e = duration in seconds (14400 = 4 h).
- * Returns the expiry epoch in seconds, or null when the URL has no such params
- * (e.g. the public test stream).
+ * Some providers encode validity in the URL: s = issued-at (epoch seconds),
+ * e = duration in seconds. Others (plain .mp4, other CDNs) carry nothing.
+ * Returns null when unknown — never guess.
  */
 function linkExpiresAt(sourceUrl: string): number | null {
   try {
@@ -50,7 +52,6 @@ function isLinkExpired(sourceUrl: string): boolean {
   return Date.now() / 1000 >= expiresAt - LINK_EXPIRY_MARGIN_SECONDS;
 }
 
-/** Effective playback position in seconds, accounting for time elapsed while playing. */
 function effectiveTime(state: RoomState): number {
   return state.isPlaying
     ? state.baseTime + (Date.now() - state.updatedAt) / 1000
@@ -63,15 +64,12 @@ function snapshot(state: RoomState) {
     unique.set(member.userId, { id: member.userId, name: member.name });
   }
 
-  // Never ship a dead studio link: an expired token only produces a promo video.
   const expired =
     state.sourceExpired || (state.sourceUrl !== null && isLinkExpired(state.sourceUrl));
-  const sourceUrl = expired ? null : state.sourceUrl;
 
   return {
-    roomId: state.roomId,
-    playId: state.playId,
-    sourceUrl,
+    sessionId: state.sessionId,
+    sourceUrl: expired ? null : state.sourceUrl,
     sourceExpired: expired,
     expiresAt: state.sourceUrl ? linkExpiresAt(state.sourceUrl) : null,
     isPlaying: expired ? false : state.isPlaying,
@@ -81,90 +79,15 @@ function snapshot(state: RoomState) {
   };
 }
 
-/** Work durations in seconds, resolved lazily and cached. */
-const durationCache = new Map<string, number>();
-
-async function durationSeconds(playId: string): Promise<number> {
-  const cached = durationCache.get(playId);
-  if (cached !== undefined) return cached;
-
-  let seconds = 60 * 60;
+/** Persist only the minute count — never the URL. */
+async function persistPosition(state: RoomState) {
   try {
-    const play = await prisma.play.findUnique({ where: { id: playId } });
-    if (play?.durationMinutes && play.durationMinutes > 0) {
-      seconds = play.durationMinutes * 60;
-    }
-  } catch (error) {
-    console.error('[rooms] No se pudo leer la duración de la obra:', error);
-  }
-
-  durationCache.set(playId, seconds);
-  return seconds;
-}
-
-/** Persist the room row. Failures are logged, never thrown into socket handlers. */
-async function persist(state: RoomState) {
-  try {
-    await prisma.room.upsert({
-      where: { id: state.roomId },
-      create: {
-        id: state.roomId,
-        playId: state.playId,
-        sourceUrl: state.sourceUrl,
-        isPlaying: state.isPlaying,
-        baseTime: state.baseTime,
-        version: state.version,
-      },
-      update: {
-        sourceUrl: state.sourceUrl,
-        isPlaying: state.isPlaying,
-        baseTime: state.baseTime,
-        version: state.version,
-      },
+    await prisma.session.update({
+      where: { id: state.sessionId },
+      data: { positionSeconds: Math.max(0, effectiveTime(state)) },
     });
   } catch (error) {
-    console.error('[rooms] No se pudo persistir la sala:', error);
-  }
-}
-
-/**
- * Write per-user progress for every member of the room. Both people are on the
- * same synced position, so both advance identically. `lastPosition` never
- * regresses: going back in the video does not erase how far you got.
- */
-async function saveRoomProgress(state: RoomState) {
-  const position = effectiveTime(state);
-  const duration = await durationSeconds(state.playId);
-  if (duration <= 0) return;
-
-  const completionThreshold = duration * 0.9;
-  const seen = new Set<string>();
-
-  for (const member of state.members.values()) {
-    if (seen.has(member.userId)) continue;
-    seen.add(member.userId);
-
-    try {
-      const existing = await prisma.watchProgress.findUnique({
-        where: { userId_playId: { userId: member.userId, playId: state.playId } },
-      });
-
-      const lastPosition = Math.max(existing?.lastPosition ?? 0, position);
-      const completed = (existing?.completed ?? false) || position >= completionThreshold;
-
-      await prisma.watchProgress.upsert({
-        where: { userId_playId: { userId: member.userId, playId: state.playId } },
-        create: {
-          userId: member.userId,
-          playId: state.playId,
-          lastPosition,
-          completed,
-        },
-        update: { lastPosition, completed },
-      });
-    } catch (error) {
-      console.error('[rooms] No se pudo guardar el progreso:', error);
-    }
+    console.error('[rooms] No se pudo guardar la posición:', error);
   }
 }
 
@@ -176,66 +99,27 @@ function commit(state: RoomState, partial: Partial<RoomState>) {
   state.baseTime = time;
   state.updatedAt = Date.now();
   state.version += 1;
-  void persist(state);
 }
 
-async function getOrCreate(roomId: string): Promise<RoomState> {
-  let state = rooms.get(roomId);
-  if (state) return state;
+async function getOrCreate(sessionId: string): Promise<RoomState | null> {
+  const existing = rooms.get(sessionId);
+  if (existing) return existing;
 
-  // Rebuild from PostgreSQL so a room survives both users disconnecting
-  // and server restarts (the ephemeral link stays valid for 4h).
-  let row = null;
-  try {
-    row = await prisma.room.findUnique({ where: { id: roomId } });
-  } catch (error) {
-    console.error('[rooms] No se pudo leer la sala:', error);
-  }
+  const row = await prisma.session.findUnique({ where: { id: sessionId } });
+  if (!row) return null;
 
-  const storedUrl = row?.sourceUrl ?? null;
-  const dropped = storedUrl !== null && isLinkExpired(storedUrl);
-
-  state = {
-    roomId,
-    playId: roomId,
-    sourceUrl: dropped ? null : storedUrl,
-    sourceExpired: dropped,
+  const state: RoomState = {
+    sessionId,
+    sourceUrl: null,
+    sourceExpired: false,
     isPlaying: false,
-    baseTime: row?.baseTime ?? 0,
+    baseTime: row.positionSeconds,
     updatedAt: Date.now(),
-    version: row?.version ?? 1,
+    version: 1,
     members: new Map(),
   };
-  rooms.set(roomId, state);
+  rooms.set(sessionId, state);
   return state;
-}
-
-/**
- * Rebuild in-memory rooms from PostgreSQL. Never starts in "playing" mode:
- * a restarted server must not surprise autoplay.
- */
-export async function hydrateRooms() {
-  const rows = await prisma.room.findMany({
-    where: { sourceUrl: { not: null } },
-  });
-
-  for (const row of rows) {
-    const dropped = row.sourceUrl !== null && isLinkExpired(row.sourceUrl);
-
-    rooms.set(row.id, {
-      roomId: row.id,
-      playId: row.playId,
-      sourceUrl: dropped ? null : row.sourceUrl,
-      sourceExpired: dropped,
-      isPlaying: false,
-      baseTime: row.baseTime,
-      updatedAt: Date.now(),
-      version: row.version,
-      members: new Map(),
-    });
-  }
-
-  console.log(`[rooms] hidratadas ${rows.length} sala(s) desde PostgreSQL (links vencidos descartados)`);
 }
 
 export function registerRooms(io: Server) {
@@ -262,79 +146,82 @@ export function registerRooms(io: Server) {
       name: (socket.data.user?.name as string) ?? 'Invitado',
     });
 
-    let roomId: string | null = null;
+    let sessionId: string | null = null;
 
     socket.on('room:join', async (payload: { roomId: string }) => {
       if (!payload?.roomId) return;
 
       const state = await getOrCreate(payload.roomId);
-      roomId = payload.roomId;
-      void socket.join(roomId);
+      if (!state) {
+        socket.emit('room:error', { message: 'La sesión no existe.' });
+        return;
+      }
 
+      sessionId = payload.roomId;
+      void socket.join(sessionId);
       state.members.set(socket.id, member());
 
       const view = snapshot(state);
-      // The joiner gets the full state, everyone else gets notified to re-derive it.
       socket.emit('room:state', view);
-      socket.to(roomId).emit('room:state', view);
+      socket.to(sessionId).emit('room:state', view);
     });
 
     socket.on('room:load', (payload: { sourceUrl?: string }) => {
-      if (!roomId) return;
+      if (!sessionId) return;
       const sourceUrl = payload?.sourceUrl?.trim();
       if (!sourceUrl) return;
 
-      const state = rooms.get(roomId);
+      const state = rooms.get(sessionId);
       if (!state) return;
 
       if (isLinkExpired(sourceUrl)) {
         socket.emit('room:error', {
-          message: 'Ese link ya venció (los del estudio duran 4 h). Pedí uno nuevo.',
+          message: 'Ese link ya venció. Pedí uno nuevo al estudio.',
         });
         return;
       }
 
-      commit(state, { sourceUrl, isPlaying: false, baseTime: 0 });
-      void saveRoomProgress(state);
-      io.to(roomId).emit('room:state', snapshot(state));
+      // Keep the saved position: the session resumes where it was left, and
+      // entering/leaving without playing must not wipe the minutes.
+      commit(state, { sourceUrl, isPlaying: false });
+      io.to(sessionId).emit('room:state', snapshot(state));
     });
 
     socket.on('room:play', () => {
-      if (!roomId) return;
-      const state = rooms.get(roomId);
+      if (!sessionId) return;
+      const state = rooms.get(sessionId);
       if (!state || state.isPlaying) return;
       commit(state, { isPlaying: true });
-      io.to(roomId).emit('room:state', snapshot(state));
+      io.to(sessionId).emit('room:state', snapshot(state));
     });
 
     socket.on('room:pause', () => {
-      if (!roomId) return;
-      const state = rooms.get(roomId);
+      if (!sessionId) return;
+      const state = rooms.get(sessionId);
       if (!state || !state.isPlaying) return;
       commit(state, { isPlaying: false });
-      void saveRoomProgress(state);
-      io.to(roomId).emit('room:state', snapshot(state));
+      void persistPosition(state);
+      io.to(sessionId).emit('room:state', snapshot(state));
     });
 
     socket.on('room:seek', (payload: { time?: number }) => {
-      if (!roomId) return;
-      const state = rooms.get(roomId);
+      if (!sessionId) return;
+      const state = rooms.get(sessionId);
       const time = payload?.time;
       if (!state || typeof time !== 'number' || Number.isNaN(time)) return;
 
       commit(state, { baseTime: Math.max(0, time) });
-      void saveRoomProgress(state);
-      io.to(roomId).emit('room:state', snapshot(state));
+      void persistPosition(state);
+      io.to(sessionId).emit('room:state', snapshot(state));
     });
 
-    // Drift correction: the server answers only to the reporter, it never
-    // rebroadcasts on a mere tick, so clients don't fight each other.
+    // Drift correction: answer only the reporter, and never while it is
+    // mid-seek (its reported time is a moving target).
     socket.on('room:tick', (payload: { time?: number; seeking?: boolean }) => {
-      if (!roomId) return;
-      const state = rooms.get(roomId);
+      if (!sessionId) return;
+      const state = rooms.get(sessionId);
       const time = payload?.time;
       if (!state || typeof time !== 'number' || Number.isNaN(time)) return;
-      // The reporter is mid-seek; its tick carries a moving target, never a drift signal.
       if (payload.seeking) return;
 
       if (Math.abs(effectiveTime(state) - time) > 2) {
@@ -343,21 +230,22 @@ export function registerRooms(io: Server) {
     });
 
     const leave = () => {
-      if (!roomId) return;
-      const state = rooms.get(roomId);
+      if (!sessionId) return;
+      const state = rooms.get(sessionId);
       if (!state) return;
 
-      void saveRoomProgress(state);
+      void persistPosition(state);
       state.members.delete(socket.id);
-      void socket.leave(roomId);
+      void socket.leave(sessionId);
 
       if (state.members.size === 0) {
-        rooms.delete(roomId);
+        // No members, no link: nothing to keep.
+        rooms.delete(sessionId);
       } else {
-        io.to(roomId).emit('room:state', snapshot(state));
+        io.to(sessionId).emit('room:state', snapshot(state));
       }
 
-      roomId = null;
+      sessionId = null;
     };
 
     socket.on('room:leave', leave);

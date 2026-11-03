@@ -41,9 +41,8 @@ export default function Layout() {
 
         <nav className="site-nav" aria-label="Navegación principal">
           <NavLink to="/" end>
-            Catálogo
+            Sesiones
           </NavLink>
-          <NavLink to="/historial">Historial</NavLink>
           <NavLink to="/cuenta">Mi cuenta</NavLink>
           {user?.role === 'admin' ? <NavLink to="/admin">Cuentas</NavLink> : null}
 

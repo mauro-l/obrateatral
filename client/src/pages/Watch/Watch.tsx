@@ -2,50 +2,53 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import type { Play, ProgressItem } from '../../lib/types';
+import type { Session } from '../../lib/types';
 import VideoPlayer from '../../components/VideoPlayer/VideoPlayer';
 import { useRoomSync } from '../../lib/useRoomSync';
 
-// Public HLS stream, used to validate the player while the studio link arrives.
+// Public HLS stream, handy to test the player without a studio link.
 const TEST_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
 
 export default function Watch() {
-  const { playId } = useParams<{ playId: string }>();
+  const { sessionId } = useParams<{ sessionId: string }>();
 
-  const [play, setPlay] = useState<Play | null>(null);
-  const [progress, setProgress] = useState<ProgressItem | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [draft, setDraft] = useState('');
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    api
-      .listPlays()
-      .then((list) => setPlay(list.find((p) => p.id === playId) ?? null))
-      .catch(() => setPlay(null));
+    if (!sessionId) return;
 
-    api
-      .listProgress()
-      .then((rows) => setProgress(rows.find((row) => row.playId === playId) ?? null))
-      .catch(() => setProgress(null));
-  }, [playId]);
+    api.sessions
+      .get(sessionId)
+      .then(setSession)
+      .catch((e: Error) => setLoadError(e.message));
+  }, [sessionId]);
 
   const { connected, members, loadVideo, error, sourceExpired, expiresAt } = useRoomSync({
-    roomId: playId,
+    roomId: sessionId,
     videoRef,
     loadedSrc,
     onLoadSource: setLoadedSrc,
-    resumePosition: progress && !progress.completed ? progress.lastPosition : null,
+    resumePosition: session?.positionSeconds ?? null,
   });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const target = draft.trim();
-    if (target) loadVideo(target);
+    if (target) {
+      setLoadError(null);
+      loadVideo(target);
+    }
   };
 
-  const loadTestStream = () => loadVideo(TEST_STREAM);
+  const loadTestStream = () => {
+    setLoadError(null);
+    loadVideo(TEST_STREAM);
+  };
 
   const expiresLabel = expiresAt
     ? new Date(expiresAt * 1000).toLocaleTimeString('es-AR', {
@@ -57,14 +60,20 @@ export default function Watch() {
   return (
     <>
       <div className="page-intro">
-        <h1>{play ? play.title : 'Sala de visionado'}</h1>
+        <h1>{session ? session.name : 'Sesión'}</h1>
         <p>
-          <Link to="/">← Volver al catálogo</Link>
+          <Link to="/">← Volver a las sesiones</Link>
         </p>
       </div>
 
       <div className="watch-layout">
         <div>
+          {loadError ? (
+            <p className="error-banner" role="alert">
+              {loadError}
+            </p>
+          ) : null}
+
           {error ? (
             <p className="error-banner" role="alert">
               {error}
@@ -73,8 +82,8 @@ export default function Watch() {
 
           {sourceExpired ? (
             <p className="error-banner" role="status">
-              El link de esta sesión venció (duran 4 h). Pegá el link nuevo del estudio
-              para continuar desde donde iban.
+              El link de esta sesión venció. Pegá el link nuevo del estudio para continuar
+              desde donde iban.
             </p>
           ) : null}
 
@@ -82,7 +91,7 @@ export default function Watch() {
             <VideoPlayer src={loadedSrc} videoRef={videoRef} />
           ) : (
             <div className="player-empty">
-              <p>Cargá el link del estudio de esta obra para empezar.</p>
+              <p>Pegá el link del estudio para empezar la sesión.</p>
               <button className="btn" onClick={loadTestStream}>
                 Probar con un HLS de prueba
               </button>
@@ -95,12 +104,12 @@ export default function Watch() {
 
           <form onSubmit={submit}>
             <label className="field" htmlFor="src">
-              Link del estudio (HLS, vigente 4 h)
+              Link del estudio (el que te dieron; no se guarda)
               <input
                 id="src"
                 className="field-input"
                 type="url"
-                placeholder="https://…/master.m3u8?t=…"
+                placeholder="https://…/master.m3u8?… o https://…/video.mp4"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 autoComplete="off"
@@ -114,7 +123,7 @@ export default function Watch() {
 
           {expiresLabel ? (
             <p className="play-desc" style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-              El link de esta sesión vence alrededor de las {expiresLabel}.
+              Este link vence alrededor de las {expiresLabel}.
             </p>
           ) : null}
 
@@ -152,9 +161,9 @@ export default function Watch() {
             </ul>
           ) : null}
 
-          {play ? (
+          {session && session.positionSeconds >= 60 ? (
             <p className="play-desc" style={{ color: 'var(--text-dim)' }}>
-              Obra {play.order} · duración aprox. {play.durationMinutes} min
+              Guardado: van {Math.floor(session.positionSeconds / 60)} min de esta sesión.
             </p>
           ) : null}
         </aside>
