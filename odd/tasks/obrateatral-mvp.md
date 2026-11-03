@@ -89,6 +89,15 @@ Notas de diseño confirmadas:
  - `sp=0`: flag desconocido, no interpretar.
  - `master.m3u8` = master playlist con ABR.
 
-Pregunta abierta (Ask trigger, bloquea solo T9):
- - Auth: ¿contraseña compartida (passphrase única para los dos) o 2 cuentas fijas
-   (usuario+clave hasheada) con sesión por cookie httpOnly?
+L2 (verificación con Chrome CDP, 2026-11-03): bug real de sync en el seek — el
+cliente snap-backeaba al hacer seek a posiciones lejanas porque (a) `room:seek` se
+emitía sólo en 'seeked' (evento asíncrono, posterior al tick de 5 s) y (b) el servidor
+trataba el tick del reportante con posición en movimiento como drift y reenviaba
+snapshot. En un seek a 600 desde 123, el drift correction devolvía al cliente a 123 y
+el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (intención,
+no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
+true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
+`completed: true`. Commit 2501056.
+
+Auth (resuelta por el usuario en sesión): opción B — dos cuentas fijas con bcrypt y
+cookie httpOnly de sesión. Credenciales definitivas pendientes de pedir al desplegar.
