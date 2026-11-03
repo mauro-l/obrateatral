@@ -6,6 +6,7 @@ import cors from 'cors';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { plays } from './plays.js';
+import { registerRooms } from './rooms.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
@@ -32,13 +33,8 @@ const io = new Server(httpServer, {
   cors: { origin: CLIENT_URL, methods: ['GET', 'POST'], credentials: true },
 });
 
-io.on('connection', (socket) => {
-  console.log('Usuario conectado:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('Usuario desconectado:', socket.id);
-  });
-});
+// Shared playback-state authority, one room per obra.
+registerRooms(io);
 
 // In production the same service serves the built SPA, so no separate
 // Render static site and no CORS between the two halves of the app.

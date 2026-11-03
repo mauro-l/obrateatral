@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { RefObject } from 'react';
 import Hls from 'hls.js';
 
-export type PlaybackCommand = 'play' | 'pause';
-
-export default function VideoPlayer({ src }: { src: string | null }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export default function VideoPlayer({
+  src,
+  videoRef,
+}: {
+  src: string | null;
+  videoRef: RefObject<HTMLVideoElement | null>;
+}) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,7 +55,7 @@ export default function VideoPlayer({ src }: { src: string | null }) {
     }
 
     return detach;
-  }, [src]);
+  }, [src, videoRef]);
 
   return (
     <div className="player-shell">
