@@ -69,8 +69,11 @@ S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomend
       Seed via `SEED_USERS="name:password,..."` desde .env (gitignored).
       **Credenciales dev temporales**: Mauro-Dev / Amigo-Dev (de 4 bytes hex del
         `.env`). Pedir al usuario las definitivas antes o al desplegar. (S9)
-- [ ] T10. Deploy Render: `render.yaml` + notas (web service + plan con WebSockets,
-      Postgres con expiración documentada, env vars, `CLIENT_URL`). (S10)
+- [x] T10. Deploy Render: `render.yaml` (web service `starter` + Postgres free
+      con advertencia de expiración 90 días), `npm start` -> tsx src/server.ts
+      con NODE_ENV=production (Express sirve client/dist), README con desarrollo,
+      env vars y advertencias. Var: DATABASE_URL, SESSION_SECRET, SEED_USERS,
+      CLIENT_URL. (S10)
 
 ## Log
 
