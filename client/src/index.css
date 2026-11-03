@@ -1,0 +1,84 @@
+:root {
+  --bg: #141010;
+  --bg-raised: #1c1715;
+  --bg-card: #201915;
+  --surface: #241c18;
+
+  --text: #b8aca4;
+  --text-h: #f0e6da;
+  --text-dim: #7d726a;
+
+  --accent: #d4a054;
+  --accent-2: #e8c07a;
+  --accent-dim: #8a6a37;
+  --success: #6fa287;
+  --danger: #c06b62;
+
+  --border: #2b2320;
+  --border-strong: #3a2f29;
+
+  --radius: 14px;
+  --shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.8);
+
+  --sans: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --mono: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  font: 17px/150% var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--text-h);
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: clamp(2.4rem, 6vw, 3.4rem);
+  line-height: 1.05;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+}

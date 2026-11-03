@@ -1,0 +1,39 @@
+# obrateatral — deploy on Render
+#
+# One Node web service: API + Socket.IO + the built SPA (Express serves client/dist).
+# The database lives OUTSIDE Render: Supabase Postgres (free tier does not expire,
+# unlike Render's free Postgres, which is deleted after 90 days).
+#
+# Before you deploy:
+#   1. Create the Supabase project and copy its connection string into the
+#      DATABASE_URL variable below (Render dashboard -> Environment).
+#      Use the SESSION POOLER host (port 5432), not the transaction pooler (6543):
+#      Prisma migrations need a session, not a transaction, connection.
+#   2. Plan: `starter` keeps the instance always on. If you switch to `free`,
+#      the service sleeps after ~15 min without traffic; the client keep-alive
+#      (fetch /health every 5 min while a tab is open) covers an active session,
+#      but the first request after idling still pays a ~30-50 s cold start.
+#   3. SESSION_SECRET: `openssl rand -hex 32`. Never commit the value.
+#   4. SEED_USERS: "mauro:<clave>,teff:<clave>". It only CREATES missing users;
+#      it never overwrites a password changed from /cuenta.
+
+services:
+  - type: web
+    name: obrateatral
+    runtime: node
+    plan: starter
+    buildCommand: |
+      cd client && npm ci && npm run build && \
+      cd ../server && npm ci && npx prisma generate && npx prisma migrate deploy
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: SEED_USERS
+        sync: false
+      - key: CLIENT_URL
+        sync: false
