@@ -129,6 +129,16 @@ no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `see
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
 
+L7 (2026-11-03, diagnóstico del link real del estudio): el player mostraba el
+video promocional del CDN (`/taunt/promo/`) y parecía anti-hotlink. Falso: CORS
+está abierto (`Access-Control-Allow-Origin: *`) y el CDN responde 200 con
+cualquier combinación de Origin/UA/Sec-Fetch/sec-ch-ua/HTTP2. La causa era un
+**302 cacheado** (`cache-control: max-age=8640000`, mismo `date` en requests
+distintas) que el navegador servía a hls.js; con `fetch(..., {cache:'no-store'})`
+la misma URL devuelve 200 y el manifiesto real. Conclusión: no hace falta proxy;
+cada sesión estrena token → URL nueva → sin caché envenenada. Se agregó
+`<meta name="referrer" content="no-referrer">` (higiene, no era la causa).
+
 L6 (2026-11-03): el usuario pidió dejar de depender del seed: `mauro` pasa a admin
 y gestiona cuentas desde `/admin` (crear, renombrar, resetear clave). Se aplicó el
 rename `teff`→`marcos` por la UI, preservando el id y la contraseña. `SEED_USERS`
