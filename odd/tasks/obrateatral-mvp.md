@@ -30,6 +30,9 @@ S9. Auth privada (antes de desplegar).
 S10. Deploy en Render (decisión del usuario). Advertencias: free tier duerme tras 15 min y
      rompe WebSockets; Postgres free expira a los 90 días.
 S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomendaciones.
+S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual, mínimo 6
+     caracteres, hash bcrypt nuevo. `db:seed` sólo crea usuarios faltantes y NUNCA
+     sobrescribe una contraseña cambiada desde la UI.
 
 ## Tasks
 
@@ -61,6 +64,11 @@ S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomend
       desde PG), el cliente aplica posición guardada y arrastra a ambos.
       Verificado: tras matar el server y recargar ambas pestañas, el player
       volvió cargado en 30 s sin pegar el link de nuevo (hidratado desde PG). (S7)
+- [x] T11. Cambio de contraseña web: POST /api/auth/change-password (requiere sesión y
+      contraseña actual), página `/cuenta` con enlace en el nav, banner de confirmación.
+      Seed pasa a `update: {}` para no pisar claves cambiadas por UI. Verificado E2E en
+      Chrome: cambio -> la vieja da "Credenciales inválidas" -> la nueva entra -> revertido
+      a teatro2026 -> login OK. (S12)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
 - [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
@@ -101,6 +109,13 @@ el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (int
 no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
+
+L3 (2026-11-03): cuentas definitivas `mauro` y `teff` con contraseña compartida
+`teatro2026` (pedido explícito del usuario: "ponle una contraseña facil"), más opción
+de cambiarla desde `/cuenta`. Keep-alive: el cliente hace `fetch('/health')` cada 5 min
+mientras la hay pestaña abierta para que Render no duerma el servicio ni corte el
+WebSocket. Base elegida: Supabase (el proyecto configurado en el MCP no respondía:
+"Database is possibly not accessible"; el usuario crea uno nuevo).
 
 Auth (resuelta por el usuario en sesión): opción B — dos cuentas fijas con bcrypt y
 cookie httpOnly de sesión. Credenciales definitivas pendientes de pedir al desplegar.

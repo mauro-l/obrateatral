@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from './db.js';
 import {
   clearSessionCookie,
+  hashPassword,
   requireAuth,
   setSessionCookie,
   signSession,
@@ -44,6 +45,42 @@ authRouter.post('/login', async (req, res) => {
 authRouter.post('/logout', (_req, res) => {
   clearSessionCookie(res);
   res.json({ ok: true });
+});
+
+// Stateless JWTs are intentionally not invalidated here: this is a two-person
+// private app, and a lost session expires naturally within 30 days.
+authRouter.post('/change-password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    res.status(400).json({ error: 'Faltan campos.' });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: 'La contraseña nueva debe tener al menos 6 caracteres.' });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const ok = user ? await verifyPassword(currentPassword, user.passwordHash) : false;
+
+    if (!ok) {
+      res.status(401).json({ error: 'La contraseña actual no es correcta.' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { id: user!.id },
+      data: { passwordHash: await hashPassword(newPassword) },
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[auth] cambio de contraseña falló:', error);
+    res.status(503).json({ error: 'No se pudo cambiar la contraseña.' });
+  }
 });
 
 authRouter.get('/me', requireAuth, (req, res) => {

@@ -42,7 +42,8 @@ async function main() {
     const passwordHash = await hashPassword(password);
     await prisma.user.upsert({
       where: { name },
-      update: { passwordHash },
+      // Never clobber a password changed through the web UI.
+      update: {},
       create: { name, passwordHash },
     });
   }

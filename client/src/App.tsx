@@ -5,6 +5,7 @@ import RequireAuth from './components/RequireAuth/RequireAuth';
 import Home from './pages/Home/Home';
 import Watch from './pages/Watch/Watch';
 import History from './pages/History/History';
+import Account from './pages/Account/Account';
 import Login from './pages/Login/Login';
 import './App.css';
 
@@ -24,6 +25,7 @@ export default function App() {
             <Route index element={<Home />} />
             <Route path="/obra/:playId" element={<Watch />} />
             <Route path="/historial" element={<History />} />
+            <Route path="/cuenta" element={<Account />} />
           </Route>
         </Routes>
       </BrowserRouter>
