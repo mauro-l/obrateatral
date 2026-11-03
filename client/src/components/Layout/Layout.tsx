@@ -1,10 +1,26 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
+// Render's free tier sleeps the service after ~15 minutes without inbound
+// traffic, which kills any open WebSocket session. Ping while the tab is
+// open so a 4-hour session is never dropped for inactivity.
+const KEEP_ALIVE_MS = 5 * 60 * 1000;
+
 export default function Layout() {
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const ping = () => {
+      void fetch('/health', { credentials: 'include' }).catch(() => undefined);
+    };
+
+    ping();
+    const id = window.setInterval(ping, KEEP_ALIVE_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   const logout = async () => {
     try {
