@@ -31,7 +31,7 @@ export default function Watch() {
       .catch(() => setProgress(null));
   }, [playId]);
 
-  const { connected, members, loadVideo } = useRoomSync({
+  const { connected, members, loadVideo, error, sourceExpired, expiresAt } = useRoomSync({
     roomId: playId,
     videoRef,
     loadedSrc,
@@ -47,6 +47,13 @@ export default function Watch() {
 
   const loadTestStream = () => loadVideo(TEST_STREAM);
 
+  const expiresLabel = expiresAt
+    ? new Date(expiresAt * 1000).toLocaleTimeString('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
   return (
     <>
       <div className="page-intro">
@@ -58,6 +65,19 @@ export default function Watch() {
 
       <div className="watch-layout">
         <div>
+          {error ? (
+            <p className="error-banner" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {sourceExpired ? (
+            <p className="error-banner" role="status">
+              El link de esta sesión venció (duran 4 h). Pegá el link nuevo del estudio
+              para continuar desde donde iban.
+            </p>
+          ) : null}
+
           {loadedSrc ? (
             <VideoPlayer src={loadedSrc} videoRef={videoRef} />
           ) : (
@@ -91,6 +111,12 @@ export default function Watch() {
               Cargar video
             </button>
           </form>
+
+          {expiresLabel ? (
+            <p className="play-desc" style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+              El link de esta sesión vence alrededor de las {expiresLabel}.
+            </p>
+          ) : null}
 
           <div className="sync-status" role="status">
             <span

@@ -30,6 +30,11 @@ S9. Auth privada (antes de desplegar).
 S10. Deploy en Render (decisión del usuario). Advertencias: free tier duerme tras 15 min y
      rompe WebSockets; Postgres free expira a los 90 días.
 S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomendaciones.
+S14. El link del estudio dice cuándo vence (`s` = emitido, `e` = duración, 14400 s).
+     La app lo parsea: muestra la hora de vencimiento, rechaza links ya vencidos al
+     cargarlos y descarta de la sala un link vencido (nunca lo sirve al player, que
+     sólo produciría el video promocional del CDN). Tras pegar un link nuevo, ambos
+     retoman desde la última posición guardada.
 S13. Administración de cuentas desde la web (`/admin`, solo `role = "admin"`): crear
      usuario, renombrarlo y resetear su contraseña. El rol se lee de la DB en cada
      request (revocar es inmediato). El seed sólo bootstrapea el admin inicial
@@ -88,6 +93,14 @@ S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual
       y generador de contraseñas, enlace en el nav sólo para admin.
       Verificado: rename `teff`→`marcos` desde la UI (mismo id, misma clave),
       creación por API 201, y `marcos` (member) recibe 403 en /api/admin/users. (S13)
+- [x] T14. Vencimiento de links: `linkExpiresAt`/`isLinkExpired` en `rooms.ts`
+      (margen de 120 s), `sourceExpired` + `expiresAt` en el snapshot, `room:error`
+      al intentar cargar un link vencido, y la UI muestra "vence alrededor de las HH:MM"
+      o el aviso de que venció. Bug corregido en verificación: el flag se calculaba
+      después de nullificar `sourceUrl`, así que nunca llegaba a la UI.
+      Verificado: link vencido rechazado (no se guarda), sala con link vencido
+      hidratada muestra el aviso y no monta el player, y el link real de obra-1
+      quedó intacto. (S14)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
 - [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
@@ -128,6 +141,13 @@ el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (int
 no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
+
+L8 (2026-11-03): el usuario detectó que el link queda guardado en `Room.sourceUrl`
+(y por eso el otro navegador entra sin pegarlo) y que vence a las 4 h. Se implementó
+el manejo de vencimiento leyendo `s`+`e` del propio link. Comportamiento final: con
+link válido se muestra la hora de vencimiento; al vencer, la sala deja de servirlo y
+pide uno nuevo; el progreso se conserva y al pegar el link nuevo ambos retoman la
+posición.
 
 L7 (2026-11-03, diagnóstico del link real del estudio): el player mostraba el
 video promocional del CDN (`/taunt/promo/`) y parecía anti-hotlink. Falso: CORS

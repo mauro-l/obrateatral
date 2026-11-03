@@ -9,6 +9,8 @@ export type RoomView = {
   roomId: string;
   playId: string;
   sourceUrl: string | null;
+  sourceExpired: boolean;
+  expiresAt: number | null;
   isPlaying: boolean;
   position: number;
   version: number;
@@ -25,7 +27,7 @@ export function useRoomSync({
   roomId: string | undefined;
   videoRef: RefObject<HTMLVideoElement | null>;
   loadedSrc: string | null;
-  onLoadSource: (url: string) => void;
+  onLoadSource: (url: string | null) => void;
   /** Furthest saved position for this obra, in seconds. Used to seek both
    *  players forward right after a fresh link is loaded. */
   resumePosition?: number | null;
@@ -34,6 +36,9 @@ export function useRoomSync({
 
   const [connected, setConnected] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [sourceExpired, setSourceExpired] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
 
   const applyingRemote = useRef(false);
   const versionRef = useRef(0);
@@ -77,6 +82,16 @@ export function useRoomSync({
       latestState.current = state;
       versionRef.current = Math.max(versionRef.current, state.version);
       setMembers(state.members);
+      setSourceExpired(Boolean(state.sourceExpired));
+      setExpiresAt(state.expiresAt ?? null);
+
+      if (state.sourceUrl) setError(null);
+
+      // An expired studio link must stop feeding the player: it only yields a promo.
+      if (state.sourceExpired) {
+        onLoadSource(null);
+        return;
+      }
 
       if (state.sourceUrl && state.sourceUrl !== loadedSrcRef.current) {
         onLoadSource(state.sourceUrl);
@@ -107,10 +122,14 @@ export function useRoomSync({
       if (state.version < versionRef.current) return;
       applyRemoteState(state);
     };
+    const onError = (payload: { message?: string }) => {
+      setError(payload?.message ?? 'No se pudo cargar el link.');
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('room:state', onState);
+    socket.on('room:error', onError);
 
     if (socket.connected) {
       setConnected(true);
@@ -121,6 +140,7 @@ export function useRoomSync({
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('room:state', onState);
+      socket.off('room:error', onError);
       socket.emit('room:leave', { roomId });
     };
   }, [roomId, applyRemoteState]);
@@ -197,5 +217,5 @@ export function useRoomSync({
     [roomId],
   );
 
-  return { connected, members, loadVideo };
+  return { connected, members, loadVideo, error, sourceExpired, expiresAt };
 }

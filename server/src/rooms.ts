@@ -8,6 +8,8 @@ type RoomState = {
   roomId: string;
   playId: string;
   sourceUrl: string | null;
+  /** The stored link exists but already expired; the UI must ask for a new one. */
+  sourceExpired: boolean;
   isPlaying: boolean;
   baseTime: number;
   updatedAt: number;
@@ -16,6 +18,37 @@ type RoomState = {
 };
 
 const rooms = new Map<string, RoomState>();
+
+/** Margin before the real expiry, so we stop serving a link that is about to die. */
+const LINK_EXPIRY_MARGIN_SECONDS = 120;
+
+/**
+ * Studio links carry their own validity in the query string:
+ *   s = issued-at (epoch seconds), e = duration in seconds (14400 = 4 h).
+ * Returns the expiry epoch in seconds, or null when the URL has no such params
+ * (e.g. the public test stream).
+ */
+function linkExpiresAt(sourceUrl: string): number | null {
+  try {
+    const url = new URL(sourceUrl);
+    const issuedAt = Number(url.searchParams.get('s'));
+    const duration = Number(url.searchParams.get('e'));
+
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(duration) || duration <= 0) {
+      return null;
+    }
+
+    return issuedAt + duration;
+  } catch {
+    return null;
+  }
+}
+
+function isLinkExpired(sourceUrl: string): boolean {
+  const expiresAt = linkExpiresAt(sourceUrl);
+  if (expiresAt === null) return false;
+  return Date.now() / 1000 >= expiresAt - LINK_EXPIRY_MARGIN_SECONDS;
+}
 
 /** Effective playback position in seconds, accounting for time elapsed while playing. */
 function effectiveTime(state: RoomState): number {
@@ -30,11 +63,18 @@ function snapshot(state: RoomState) {
     unique.set(member.userId, { id: member.userId, name: member.name });
   }
 
+  // Never ship a dead studio link: an expired token only produces a promo video.
+  const expired =
+    state.sourceExpired || (state.sourceUrl !== null && isLinkExpired(state.sourceUrl));
+  const sourceUrl = expired ? null : state.sourceUrl;
+
   return {
     roomId: state.roomId,
     playId: state.playId,
-    sourceUrl: state.sourceUrl,
-    isPlaying: state.isPlaying,
+    sourceUrl,
+    sourceExpired: expired,
+    expiresAt: state.sourceUrl ? linkExpiresAt(state.sourceUrl) : null,
+    isPlaying: expired ? false : state.isPlaying,
     position: effectiveTime(state),
     version: state.version,
     members: [...unique.values()],
@@ -132,6 +172,7 @@ function commit(state: RoomState, partial: Partial<RoomState>) {
   const time = 'baseTime' in partial ? partial.baseTime! : effectiveTime(state);
   state.isPlaying = partial.isPlaying ?? state.isPlaying;
   state.sourceUrl = 'sourceUrl' in partial ? (partial.sourceUrl ?? null) : state.sourceUrl;
+  if ('sourceUrl' in partial && partial.sourceUrl) state.sourceExpired = false;
   state.baseTime = time;
   state.updatedAt = Date.now();
   state.version += 1;
@@ -151,10 +192,14 @@ async function getOrCreate(roomId: string): Promise<RoomState> {
     console.error('[rooms] No se pudo leer la sala:', error);
   }
 
+  const storedUrl = row?.sourceUrl ?? null;
+  const dropped = storedUrl !== null && isLinkExpired(storedUrl);
+
   state = {
     roomId,
     playId: roomId,
-    sourceUrl: row?.sourceUrl ?? null,
+    sourceUrl: dropped ? null : storedUrl,
+    sourceExpired: dropped,
     isPlaying: false,
     baseTime: row?.baseTime ?? 0,
     updatedAt: Date.now(),
@@ -175,10 +220,13 @@ export async function hydrateRooms() {
   });
 
   for (const row of rows) {
+    const dropped = row.sourceUrl !== null && isLinkExpired(row.sourceUrl);
+
     rooms.set(row.id, {
       roomId: row.id,
       playId: row.playId,
-      sourceUrl: row.sourceUrl,
+      sourceUrl: dropped ? null : row.sourceUrl,
+      sourceExpired: dropped,
       isPlaying: false,
       baseTime: row.baseTime,
       updatedAt: Date.now(),
@@ -187,7 +235,7 @@ export async function hydrateRooms() {
     });
   }
 
-  console.log(`[rooms] hidratadas ${rows.length} sala(s) desde PostgreSQL`);
+  console.log(`[rooms] hidratadas ${rows.length} sala(s) desde PostgreSQL (links vencidos descartados)`);
 }
 
 export function registerRooms(io: Server) {
@@ -238,6 +286,13 @@ export function registerRooms(io: Server) {
 
       const state = rooms.get(roomId);
       if (!state) return;
+
+      if (isLinkExpired(sourceUrl)) {
+        socket.emit('room:error', {
+          message: 'Ese link ya venció (los del estudio duran 4 h). Pedí uno nuevo.',
+        });
+        return;
+      }
 
       commit(state, { sourceUrl, isPlaying: false, baseTime: 0 });
       void saveRoomProgress(state);
