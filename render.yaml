@@ -21,6 +21,9 @@
 #      transaction pooler (6543): Prisma migrations need a session connection.
 #      Adding `?connection_limit=5` is a good idea on a free project.
 #   2. SESSION_SECRET: `openssl rand -hex 32`. Never commit the value.
+#   2b. NODE_ENV=production makes `npm ci` skip devDependencies, which is why the
+#       build command passes --include=dev (Prisma CLI) and `tsx` lives in
+#       dependencies (the start command runs TypeScript directly).
 #   3. SEED_USERS: "mauro:<clave>,teff:<clave>". It only CREATES missing users;
 #      it never overwrites a password changed from /cuenta.
 #   4. CLIENT_URL: the Netlify URL (e.g. https://obrateatral.netlify.app). It drives
@@ -32,7 +35,7 @@ services:
     runtime: node
     plan: free
     buildCommand: |
-      cd server && npm ci && npx prisma generate && npx prisma migrate deploy
+      cd server && npm ci --include=dev && npx prisma generate && npx prisma migrate deploy
     startCommand: cd server && npm start
     envVars:
       - key: NODE_ENV

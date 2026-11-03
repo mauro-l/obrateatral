@@ -61,6 +61,11 @@ Variables: `DATABASE_URL`, `SESSION_SECRET` (`openssl rand -hex 32`),
 `SEED_USERS` (`Nombre1:clave1,Nombre2:clave2` — idempotente, bcrypt),
 `CLIENT_URL` (URL pública del servicio). `NODE_ENV=production` en Render.
 
+Detalle del build: con `NODE_ENV=production`, `npm ci` omite devDependencies. Por eso
+`tsx` vive en `dependencies` (el start corre TypeScript directo) y el build usa
+`npm ci --include=dev` para tener el CLI de Prisma. Si movés `tsx` a devDependencies
+sin compilar a JS, el servicio no arranca (`tsx: not found`, status 127).
+
 ## Estado
 
 Ver `odd/tasks/obrateatral-mvp.md`. T1–T7 y T9 completos y verificados con

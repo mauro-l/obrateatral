@@ -118,6 +118,14 @@ no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `see
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
 
+L5 (2026-11-03, deploy Render): el start falló con `sh: 1: tsx: not found` /
+status 127. Causa: `NODE_ENV=production` hace que `npm ci` omita devDependencies y
+`tsx` estaba ahí, aunque `npm start` corre TypeScript directo. Fix: `tsx` pasa a
+dependencies (es runtime real en este diseño), `engines.node >= 20`, y el
+buildCommand usa `npm ci --include=dev` para tener Prisma CLI en el build.
+Verificado con una instalación limpia `npm ci --omit=dev` en directorio temporal:
+`tsx --version` responde.
+
 L4 (2026-11-03): el usuario definió hosting partido: server en Render (blueprint,
 tier FREE — nunca se paga) y front en Netlify. Consecuencia resuelta: cookie
 SameSite=Lax no viaja cross-site, así que `/api` se proxea por Netlify y el
