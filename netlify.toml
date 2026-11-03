@@ -1,0 +1,24 @@
+# Front estático en Netlify; API + Socket.IO en Render.
+#
+# /api se proxea por el edge de Netlify para que el navegador vea UN solo origen:
+# la cookie de sesión queda first-party (SameSite=Lax funciona) y no hay CORS.
+# El WebSocket NO se proxea (Netlify no lo soporta de forma confiable hacia un
+# host externo): conecta directo a Render y se autentica con un token de 5 min.
+
+[build]
+  base    = "client"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+# Cambiá el host si tu servicio de Render no queda en obrateatral.onrender.com.
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://obrateatral.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
+# Fallback de la SPA (BrowserRouter).
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

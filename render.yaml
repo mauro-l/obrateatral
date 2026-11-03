@@ -1,6 +1,10 @@
-# obrateatral — deploy on Render (FREE tier)
+# obrateatral — SERVER on Render (FREE tier), front on Netlify.
 #
-# One Node web service: API + Socket.IO + the built SPA (Express serves client/dist).
+# This service is API + Socket.IO only. The SPA is built and served by Netlify
+# (see netlify.toml), which also proxies /api here so the session cookie stays
+# first-party. The WebSocket connects directly and authenticates with a 5-minute
+# token (/api/auth/socket-token).
+#
 # The database lives OUTSIDE Render: Supabase Postgres (its free tier does not expire,
 # unlike Render's free Postgres, which is deleted after 90 days).
 #
@@ -19,6 +23,8 @@
 #   2. SESSION_SECRET: `openssl rand -hex 32`. Never commit the value.
 #   3. SEED_USERS: "mauro:<clave>,teff:<clave>". It only CREATES missing users;
 #      it never overwrites a password changed from /cuenta.
+#   4. CLIENT_URL: the Netlify URL (e.g. https://obrateatral.netlify.app). It drives
+#      CORS for the WebSocket handshake. Comma-separate extra origins if needed.
 
 services:
   - type: web
@@ -26,8 +32,7 @@ services:
     runtime: node
     plan: free
     buildCommand: |
-      cd client && npm ci && npm run build && \
-      cd ../server && npm ci && npx prisma generate && npx prisma migrate deploy
+      cd server && npm ci && npx prisma generate && npx prisma migrate deploy
     startCommand: cd server && npm start
     envVars:
       - key: NODE_ENV

@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { prisma } from './db.js';
-import { sessionFromCookieHeader } from './auth.js';
+import { sessionFromCookieHeader, verifySessionToken } from './auth.js';
 
 type Member = { userId: string; name: string };
 
@@ -191,13 +191,19 @@ export async function hydrateRooms() {
 }
 
 export function registerRooms(io: Server) {
-  // Private room: every socket must carry a valid session cookie.
+  // Private room. A handshake token wins (cross-site: Netlify -> Render), and
+  // the session cookie remains the fallback for same-origin / local dev.
   io.use((socket, next) => {
-    const user = sessionFromCookieHeader(socket.request.headers.cookie);
+    const handshakeToken = (socket.handshake.auth as { token?: string } | undefined)?.token;
+    const user =
+      (handshakeToken && verifySessionToken(handshakeToken)) ||
+      sessionFromCookieHeader(socket.request.headers.cookie);
+
     if (!user) {
       next(new Error('No autenticado.'));
       return;
     }
+
     socket.data.user = user;
     next();
   });

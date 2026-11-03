@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -15,12 +16,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
 
 const PORT = Number(process.env.PORT) || 3001;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+// CLIENT_URL may be a comma-separated list: the Netlify site, and optionally the
+// Render host itself when the SPA fallback is used.
+const CLIENT_ORIGINS = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const isProduction = process.env.NODE_ENV === 'production';
 
 const app = express();
 
-app.use(cors({ origin: CLIENT_URL, credentials: true }));
+app.use(cors({ origin: CLIENT_ORIGINS, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -67,15 +73,15 @@ app.get('/api/progress', requireAuth, async (req, res) => {
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: { origin: CLIENT_URL, methods: ['GET', 'POST'], credentials: true },
+  cors: { origin: CLIENT_ORIGINS, methods: ['GET', 'POST'], credentials: true },
 });
 
 // Shared playback-state authority, one room per obra.
 registerRooms(io);
 
-// In production the same service serves the built SPA, so no separate
-// Render static site and no CORS between the two halves of the app.
-if (isProduction) {
+// Optional: when client/dist exists (single-service deploy) serve the SPA here.
+// With the front on Netlify this block is skipped and Render is API-only.
+if (isProduction && fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
