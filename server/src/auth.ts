@@ -21,9 +21,12 @@ export function verifyPassword(plainText: string, passwordHash: string): Promise
   return bcrypt.compare(plainText, passwordHash);
 }
 
-export function signSession(user: { id: string; name: string }): string {
+export function signSession(
+  user: { id: string; name: string },
+  expiresIn: '30d' | '5m' = '30d',
+): string {
   return jwt.sign({ sub: user.id, name: user.name } satisfies SessionUser, secret(), {
-    expiresIn: '30d',
+    expiresIn,
   });
 }
 

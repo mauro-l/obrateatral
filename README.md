@@ -7,11 +7,22 @@ estado de la sala.
 
 ## Arquitectura
 
+Hosting partido: **front en Netlify**, **API + Socket.IO en Render**, **Postgres en Supabase**.
+
 ```
-client/          React + Vite + TypeScript (SPA con BrowserRouter,
-                servida por Express en producción)
-server/          Express + Socket.IO + Prisma 7 (PostgreSQL)
+client/          React + Vite + TypeScript (SPA con BrowserRouter) -> Netlify
+server/          Express + Socket.IO + Prisma 7                    -> Render (free)
+netlify.toml     proxy /api/* -> Render (mismo origen: cookie first-party)
+                 SPA fallback
 ```
+
+Como el front y la API viven en dominios distintos:
+
+- `/api/*` se proxea por el edge de Netlify. El navegador ve **un solo origen**, la
+  cookie `SameSite=Lax` sigue siendo first-party y no interviene CORS.
+- El WebSocket **no** se proxea (Netlify no lo soporta de forma confiable hacia un
+  host externo): conecta directo a Render y se autentica con un token de 5 minutos
+  (`GET /api/auth/socket-token`) enviado en el handshake.
 
 Flujo: ambos navegan la misma `/obra/:id`; cualquiera pega el link del estudio;
 el servidor persiste el `source_url` en `Room` y lo distribuye; ambos reproducen
@@ -30,6 +41,9 @@ npm run dev             # http://localhost:3001
 
 cd ../client && npm install && npm run dev   # http://localhost:5173
 ```
+
+En desarrollo no hace falta configurar nada: Vite proxea `/api` y `/socket.io` a
+`localhost:3001`, así que todo corre como mismo origen.
 
 ## Despliegue en Render
 

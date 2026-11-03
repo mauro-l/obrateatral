@@ -69,6 +69,14 @@ S12. Cambio de contraseña desde la web (`/cuenta`): exige la contraseña actual
       Seed pasa a `update: {}` para no pisar claves cambiadas por UI. Verificado E2E en
       Chrome: cambio -> la vieja da "Credenciales inválidas" -> la nueva entra -> revertido
       a teatro2026 -> login OK. (S12)
+- [x] T12. Hosting partido: front en Netlify + API/Socket.IO en Render + PG en
+      Supabase. `netlify.toml` proxea `/api/*` al host de Render (cookie first-party,
+      sin CORS) y hace SPA fallback. El WebSocket conecta directo y se autentica con
+      token de 5 min (`GET /api/auth/socket-token`, verificable en el handshake);
+      el servidor acepta token o cookie (fallback dev). `CLIENT_URL` acepta lista
+      separada por comas para CORS. `render.yaml` ya no compila el cliente.
+      Verificado: `/api/auth/socket-token` 200 con sesión y 401 sin sesión; en el
+      navegador la petición se hace y la sala conecta por token. (S10, S9)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
 - [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
@@ -109,6 +117,13 @@ el seek nunca se completaba. Fix: el cliente emite `room:seek` en `seeking` (int
 no finalización) con dedupe por tiempo; el servidor ignora `room:tick` con `seeking:
 true` para la corrección de drift. Verificado: seek a 600 se aplica y persiste
 `completed: true`. Commit 2501056.
+
+L4 (2026-11-03): el usuario definió hosting partido: server en Render (blueprint,
+tier FREE — nunca se paga) y front en Netlify. Consecuencia resuelta: cookie
+SameSite=Lax no viaja cross-site, así que `/api` se proxea por Netlify y el
+WebSocket se autentica con token corto en el handshake. Prisma se conectó a
+Supabase (pooler session, 5432) y se verificó login, catálogo y escritura de
+progreso; datos de prueba limpiados. Commit pendiente en feat/mvp-platform.
 
 L3 (2026-11-03): cuentas definitivas `mauro` y `teff` con contraseña compartida
 `teatro2026` (pedido explícito del usuario: "ponle una contraseña facil"), más opción

@@ -83,6 +83,13 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
   }
 });
 
+// Cross-site (Netlify -> Render) cannot carry the SameSite=Lax session cookie on
+// the Socket.IO handshake, so the browser trades the cookie for a 5-minute token
+// through the same-origin /api proxy and sends that token on the handshake.
+authRouter.get('/socket-token', requireAuth, (req, res) => {
+  res.json({ token: signSession({ id: req.user!.sub, name: req.user!.name }, '5m') });
+});
+
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json({ id: req.user!.sub, name: req.user!.name });
 });
