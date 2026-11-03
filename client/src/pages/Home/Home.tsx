@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import type { Play } from '../../lib/types';
+import type { Play, ProgressItem } from '../../lib/types';
 import PlayCard from '../../components/PlayCard/PlayCard';
 
 export default function Home() {
   const [plays, setPlays] = useState<Play[] | null>(null);
+  const [progress, setProgress] = useState<Map<string, ProgressItem>>(new Map());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .listPlays()
-      .then(setPlays)
+    Promise.all([api.listPlays(), api.listProgress().catch(() => [] as ProgressItem[])])
+      .then(([list, rows]) => {
+        setPlays(list);
+        setProgress(new Map(rows.map((row) => [row.playId, row])));
+      })
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -31,7 +34,7 @@ export default function Home() {
         <ul className="plays-grid">
           {plays.map((play) => (
             <li key={play.id}>
-              <PlayCard play={play} />
+              <PlayCard play={play} progress={progress.get(play.id)} />
             </li>
           ))}
         </ul>

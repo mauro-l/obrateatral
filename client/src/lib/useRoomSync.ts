@@ -15,26 +15,20 @@ export type RoomView = {
   members: Member[];
 };
 
-const DISPLAY_NAME_KEY = 'obrateatral:display-name';
-
-export function readDisplayName(): string {
-  return window.localStorage.getItem(DISPLAY_NAME_KEY) ?? '';
-}
-
-export function writeDisplayName(value: string) {
-  window.localStorage.setItem(DISPLAY_NAME_KEY, value.trim());
-}
-
 export function useRoomSync({
   roomId,
   videoRef,
   loadedSrc,
   onLoadSource,
+  resumePosition = null,
 }: {
   roomId: string | undefined;
   videoRef: RefObject<HTMLVideoElement | null>;
   loadedSrc: string | null;
   onLoadSource: (url: string) => void;
+  /** Furthest saved position for this obra, in seconds. Used to seek both
+   *  players forward right after a fresh link is loaded. */
+  resumePosition?: number | null;
 }) {
   const socketRef = useRef<Socket | null>(null);
 
@@ -45,6 +39,9 @@ export function useRoomSync({
   const versionRef = useRef(0);
   const latestState = useRef<RoomView | null>(null);
   const loadedSrcRef = useRef(loadedSrc);
+  /** Set right before we move the element ourselves. Our seeking/seeked events are not user intent. */
+  const programmaticSeek = useRef(false);
+  const lastSeekEmitted = useRef<number | null>(null);
 
   useEffect(() => {
     loadedSrcRef.current = loadedSrc;
@@ -61,6 +58,7 @@ export function useRoomSync({
       // A snapshot is authoritative even if the element is not seekable yet;
       // loadedmetadata will re-apply it once it is.
       if (Math.abs(video.currentTime - state.position) > 1.5) {
+        programmaticSeek.current = true;
         video.currentTime = state.position;
       }
 
@@ -97,7 +95,7 @@ export function useRoomSync({
     socketRef.current = socket;
 
     const join = () => {
-      socket.emit('room:join', { roomId, name: readDisplayName() });
+      socket.emit('room:join', { roomId });
     };
 
     const onConnect = () => {
@@ -127,10 +125,12 @@ export function useRoomSync({
     };
   }, [roomId, applyRemoteState]);
 
-  // Local intents + drift ticks, re-attached whenever the source changes.
+  // Local intents + drift ticks + resume, re-attached whenever the source changes.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    let resumeArmed = true;
 
     const onPlay = () => {
       if (!applyingRemote.current) socketRef.current?.emit('room:play', { roomId });
@@ -138,34 +138,57 @@ export function useRoomSync({
     const onPause = () => {
       if (!applyingRemote.current) socketRef.current?.emit('room:pause', { roomId });
     };
+    const emitSeek = (time: number) => {
+      if (lastSeekEmitted.current === time) return;
+      lastSeekEmitted.current = time;
+      socketRef.current?.emit('room:seek', { roomId, time });
+    };
+    const onSeeking = () => {
+      if (programmaticSeek.current) return; // our own seek
+      emitSeek(video.currentTime);
+    };
     const onSeeked = () => {
-      if (!applyingRemote.current) {
-        socketRef.current?.emit('room:seek', { roomId, time: video.currentTime });
+      if (programmaticSeek.current) {
+        programmaticSeek.current = false;
+        return;
       }
+      emitSeek(video.currentTime);
     };
     const onLoadedMetadata = () => {
-      if (latestState.current) applyToVideo(latestState.current);
+      const state = latestState.current;
+      if (state) applyToVideo(state);
+
+      // Freshly loaded link and the room restarted at 0: pull both players to
+      // the last saved position. The server persists and rebroadcasts it.
+      if (resumeArmed && resumePosition && resumePosition > 5) {
+        if (state && state.position < 2) {
+          socketRef.current?.emit('room:seek', { roomId, time: resumePosition });
+        }
+        resumeArmed = false;
+      }
     };
 
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
+    video.addEventListener('seeking', onSeeking);
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
 
     const tick = window.setInterval(() => {
       if (!applyingRemote.current) {
-        socketRef.current?.emit('room:tick', { roomId, time: video.currentTime });
+        socketRef.current?.emit('room:tick', { roomId, time: video.currentTime, seeking: video.seeking });
       }
     }, 5000);
 
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
+      video.removeEventListener('seeking', onSeeking);
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       window.clearInterval(tick);
     };
-  }, [applyToVideo, loadedSrc, roomId, videoRef]);
+  }, [applyToVideo, loadedSrc, roomId, videoRef, resumePosition]);
 
   const loadVideo = useCallback(
     (url: string) => {

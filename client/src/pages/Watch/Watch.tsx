@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import type { Play } from '../../lib/types';
+import type { Play, ProgressItem } from '../../lib/types';
 import VideoPlayer from '../../components/VideoPlayer/VideoPlayer';
-import { readDisplayName, useRoomSync, writeDisplayName } from '../../lib/useRoomSync';
+import { useRoomSync } from '../../lib/useRoomSync';
 
 // Public HLS stream, used to validate the player while the studio link arrives.
 const TEST_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
@@ -13,10 +13,9 @@ export default function Watch() {
   const { playId } = useParams<{ playId: string }>();
 
   const [play, setPlay] = useState<Play | null>(null);
+  const [progress, setProgress] = useState<ProgressItem | null>(null);
   const [draft, setDraft] = useState('');
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
-
-  const [displayName, setDisplayName] = useState(() => readDisplayName());
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -25,6 +24,11 @@ export default function Watch() {
       .listPlays()
       .then((list) => setPlay(list.find((p) => p.id === playId) ?? null))
       .catch(() => setPlay(null));
+
+    api
+      .listProgress()
+      .then((rows) => setProgress(rows.find((row) => row.playId === playId) ?? null))
+      .catch(() => setProgress(null));
   }, [playId]);
 
   const { connected, members, loadVideo } = useRoomSync({
@@ -32,6 +36,7 @@ export default function Watch() {
     videoRef,
     loadedSrc,
     onLoadSource: setLoadedSrc,
+    resumePosition: progress && !progress.completed ? progress.lastPosition : null,
   });
 
   const submit = (event: FormEvent) => {
@@ -67,22 +72,6 @@ export default function Watch() {
 
         <aside className="panel" aria-label="Sala compartida">
           <h2>Sala compartida</h2>
-
-          <label className="field" htmlFor="display-name">
-            Tu nombre en la sala
-            <input
-              id="display-name"
-              className="field-input"
-              value={displayName}
-              placeholder="Mauro"
-              onChange={(event) => {
-                setDisplayName(event.target.value);
-                writeDisplayName(event.target.value);
-              }}
-              maxLength={40}
-              autoComplete="off"
-            />
-          </label>
 
           <form onSubmit={submit}>
             <label className="field" htmlFor="src">
@@ -131,7 +120,7 @@ export default function Watch() {
                     color: 'var(--text-h)',
                   }}
                 >
-                  {member.name || 'Invitado'}
+                  {member.name}
                 </li>
               ))}
             </ul>

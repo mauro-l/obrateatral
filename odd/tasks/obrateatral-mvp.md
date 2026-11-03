@@ -36,17 +36,39 @@ S11. Fuera del MVP: chat, videollamada, perfiles públicos, multi-room, recomend
 - [x] T1. Scaffold: `client` (Vite+React+TS, hls.js, react-router-dom) y `server`
       (Express + Socket.IO + /health + /api/plays); server verificado (`/health` ok,
       `/api/plays` devuelve 6 placeholders).
-- [ ] T2. Catálogo: fetch `/api/plays`, grid con PlayCard, estados básico. (S1)
-- [ ] T3. Reproductor: hls.js + input para pegar el link efímero, calidad ABR,
-      `element.currentTime` controlable. (S3, S2)
-- [ ] T4. Sala sincronizada: `room.gateway.ts` (server) con autoridad de estado
-      versionado; `useRoomSocket.ts` (client). (S4)
-- [ ] T5. PostgreSQL + Prisma: schema Users/Plays/Rooms/WatchProgress, migración, seed 6 obras. (S5)
-- [ ] T6. Persistencia de progreso: pause/seek/close → guardar; 90-95% → completada. (S6)
-- [ ] T7. Retomar sesión: pegar link nuevo → seek a `WatchProgress.last_position`. (S7)
+- [x] T2. Catálogo: fetch `/api/plays`, grid con PlayCard. Verificado en Chrome
+      (CDP): 6 cards renderizan, nav OK. (S1) — e9880b3
+- [x] T3. Reproductor: hls.js + input para pegar el link efímero, ABR nativo.
+      Verificado: cargar `test-streams.mux.dev/.../x36xhzz.m3u8` → blob URL,
+      readyState 4, duration 634.58 s, sin errores en consola. (S3, S2) — e9880b3
+- [x] T4. Sala sincronizada: `server/src/rooms.ts` (autoridad versiónada),
+      `client/src/lib/useRoomSync.ts`. Verificado en Chrome CDP con dos pestañas:
+      ambas ven 2 personas, `room:load` propaga el source_url automáticamente,
+      drift < 0.02 s a los ~4.8 s, pause sincroniza al mismo instante,
+      seek a 400 s idéntico en ambas. (S4) — 3f7e525
+- [x] T5. PostgreSQL + Prisma: schema Users/Plays/Rooms/WatchProgress (Prisma 7,
+      `@prisma/adapter-pg`, generated client en src/generated, `prisma.config.ts`),
+      seed idempotente e upsert. Roles local: `obrateatral` (CREATEDB) + db
+      `obrateatral` en cluster 16/5432. Servidor lee catálogo desde PG; salas se
+      persisten e hidratan al reboot. (S5)
+- [x] T6. Persistencia de progreso: seek/pause/leave → upsert por usuario
+      (`lastPosition` nunca regresa, `completed` al 90% de `durationMinutes`).
+      Verificado en Chrome CDP con 2 pestañas mismo usuario: tras seek a 600 y
+      pausa, `/api/progress` devuelve `{ lastPosition: 600, completed: true }`
+      (obra-1 puesta temporalmente a 11 min para la prueba, restaurada a 60,
+      progreso y sala borrados tras la prueba). Historial real en UI. (S6)
+- [x] T7. Retomar sesión: al pegar el link (o tras reiniciar server/hidratar
+      desde PG), el cliente aplica posición guardada y arrastra a ambos.
+      Verificado: tras matar el server y recargar ambas pestañas, el player
+      volvió cargado en 30 s sin pegar el link de nuevo (hidratado desde PG). (S7)
 - [ ] T8. Proxy del manifiesto HLS en el backend **solo si** se comprueba que falta
       `Access-Control-Allow-Origin` (pedir el link real primero). (S8)
-- [ ] T9. Auth privada. **PENDIENTE decisión del usuario — ver Ask en ## Log.** (S9)
+- [x] T9. Auth privada: dos cuentas fijas (opción B) validadas con bcrypt,
+      cookie httpOnly `obrateatral_session` (JWT, 30 días) en `/entrar`, `/api/auth/*`,
+      `requireAuth` en /api/plays y /api/progress, middleware en Socket.IO.
+      Seed via `SEED_USERS="name:password,..."` desde .env (gitignored).
+      **Credenciales dev temporales**: Mauro-Dev / Amigo-Dev (de 4 bytes hex del
+        `.env`). Pedir al usuario las definitivas antes o al desplegar. (S9)
 - [ ] T10. Deploy Render: `render.yaml` + notas (web service + plan con WebSockets,
       Postgres con expiración documentada, env vars, `CLIENT_URL`). (S10)
 

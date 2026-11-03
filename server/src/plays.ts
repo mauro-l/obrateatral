@@ -2,7 +2,6 @@ export type Play = {
   id: string;
   title: string;
   description: string;
-  thumbnailUrl: string | null;
   durationMinutes: number;
   order: number;
 };
@@ -16,7 +15,6 @@ export const plays: Play[] = [
     id: 'obra-1',
     title: 'Obra 1',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 1,
   },
@@ -24,7 +22,6 @@ export const plays: Play[] = [
     id: 'obra-2',
     title: 'Obra 2',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 2,
   },
@@ -32,7 +29,6 @@ export const plays: Play[] = [
     id: 'obra-3',
     title: 'Obra 3',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 3,
   },
@@ -40,7 +36,6 @@ export const plays: Play[] = [
     id: 'obra-4',
     title: 'Obra 4',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 4,
   },
@@ -48,7 +43,6 @@ export const plays: Play[] = [
     id: 'obra-5',
     title: 'Obra 5',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 5,
   },
@@ -56,7 +50,6 @@ export const plays: Play[] = [
     id: 'obra-6',
     title: 'Obra 6',
     description: 'Placeholder. Reemplazar por los datos reales de la obra.',
-    thumbnailUrl: null,
     durationMinutes: 60,
     order: 6,
   },
