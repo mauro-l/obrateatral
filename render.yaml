@@ -28,6 +28,9 @@
 #      it never overwrites a password changed from /cuenta.
 #   4. CLIENT_URL: the Netlify URL (e.g. https://obrateatral.netlify.app). It drives
 #      CORS for the WebSocket handshake. Comma-separate extra origins if needed.
+#   5. LINK_KEY: AES-256-GCM key for the studio link at rest. Render generates one
+#      on first deploy. If you ever point another environment at the same database,
+#      reuse the SAME value or previously saved links cannot be decrypted.
 
 services:
   - type: web
@@ -48,3 +51,5 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: LINK_KEY
+        generateValue: true

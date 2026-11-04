@@ -11,6 +11,7 @@ import { authRouter } from './authRoutes.js';
 import { adminRouter } from './admin.js';
 import { sessionsRouter } from './sessions.js';
 import { registerRooms } from './rooms.js';
+import { isLinkEncryptionConfigured } from './linkCrypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
@@ -46,8 +47,14 @@ const io = new Server(httpServer, {
 });
 
 // Shared playback-state authority, one room per session. The studio link is
-// held in memory only.
+// held in memory for playback and persisted encrypted at rest in Session.
 registerRooms(io);
+
+if (!isLinkEncryptionConfigured()) {
+  console.warn(
+    '[startup] LINK_KEY no está configurada: el link del estudio no se guardará (queda sólo en memoria).',
+  );
+}
 
 // Optional: when client/dist exists (single-service deploy) serve the SPA here.
 // With the front on Netlify this block is skipped and Render is API-only.

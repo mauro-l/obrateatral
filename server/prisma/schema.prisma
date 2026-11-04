@@ -1,8 +1,8 @@
 // obrateatral — data model
 //
-// Deliberately minimal: the app stores ACCOUNTS and SESSION METADATA only.
-// No video URL is ever persisted anywhere — the studio link lives in server
-// memory for the duration of a session and dies with it.
+// The app stores ACCOUNTS and SESSION METADATA. The studio link is persisted
+// only encrypted at rest (AES-256-GCM, key in LINK_KEY): the database never
+// holds the plaintext URL.
 
 generator client {
   provider = "prisma-client"
@@ -25,9 +25,13 @@ model User {
 /// One analysis meeting. The name is free text chosen by the user, and the only
 /// progress stored is how many seconds into the video the session was.
 model Session {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   name            String
-  positionSeconds Float    @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  positionSeconds Float     @default(0)
+  /// Studio link encrypted at rest with AES-256-GCM. Never the plaintext URL.
+  sourceUrlEnc    String?
+  /// Exact expiry derived from the link's `s` + `e` params, when present.
+  sourceExpiresAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

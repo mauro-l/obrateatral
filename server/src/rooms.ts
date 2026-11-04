@@ -1,56 +1,34 @@
 import type { Server, Socket } from 'socket.io';
 import { prisma } from './db.js';
 import { sessionFromCookieHeader, verifySessionToken } from './auth.js';
+import { decryptLink, encryptLink, isLinkEncryptionConfigured } from './linkCrypto.js';
+import {
+  LINK_EXPIRY_MARGIN_SECONDS,
+  isLinkExpired,
+  linkExpiresAt,
+} from './linkExpiry.js';
 
 type Member = { userId: string; name: string };
 
 type RoomState = {
   sessionId: string;
   /**
-   * The studio link. It lives ONLY here, in the server's memory: it is never
-   * written to the database, so no third-party URL is ever persisted. When the
-   * room empties, it is gone.
+   * The studio link in plaintext, for the current room only. It is never
+   * logged. The encrypted copy lives in `Session.sourceUrlEnc`.
    */
   sourceUrl: string | null;
+  /** Exact expiry (epoch seconds) from the link's `s` + `e`, when present. */
+  sourceExpiresAt: number | null;
   sourceExpired: boolean;
   isPlaying: boolean;
   baseTime: number;
   updatedAt: number;
   version: number;
+  expiryTimer: NodeJS.Timeout | null;
   members: Map<string, Member>;
 };
 
 const rooms = new Map<string, RoomState>();
-
-/** Margin before the real expiry, so we stop serving a link that is about to die. */
-const LINK_EXPIRY_MARGIN_SECONDS = 120;
-
-/**
- * Some providers encode validity in the URL: s = issued-at (epoch seconds),
- * e = duration in seconds. Others (plain .mp4, other CDNs) carry nothing.
- * Returns null when unknown — never guess.
- */
-function linkExpiresAt(sourceUrl: string): number | null {
-  try {
-    const url = new URL(sourceUrl);
-    const issuedAt = Number(url.searchParams.get('s'));
-    const duration = Number(url.searchParams.get('e'));
-
-    if (!Number.isFinite(issuedAt) || !Number.isFinite(duration) || duration <= 0) {
-      return null;
-    }
-
-    return issuedAt + duration;
-  } catch {
-    return null;
-  }
-}
-
-function isLinkExpired(sourceUrl: string): boolean {
-  const expiresAt = linkExpiresAt(sourceUrl);
-  if (expiresAt === null) return false;
-  return Date.now() / 1000 >= expiresAt - LINK_EXPIRY_MARGIN_SECONDS;
-}
 
 function effectiveTime(state: RoomState): number {
   return state.isPlaying
@@ -69,9 +47,11 @@ function snapshot(state: RoomState) {
 
   return {
     sessionId: state.sessionId,
+    // An expired link is never served to the player. Copy uses the REST
+    // endpoint, which can still return it while keeping it out of broadcasts.
     sourceUrl: expired ? null : state.sourceUrl,
     sourceExpired: expired,
-    expiresAt: state.sourceUrl ? linkExpiresAt(state.sourceUrl) : null,
+    expiresAt: state.sourceExpiresAt,
     isPlaying: expired ? false : state.isPlaying,
     position: effectiveTime(state),
     version: state.version,
@@ -94,32 +74,120 @@ async function persistPosition(state: RoomState) {
 function commit(state: RoomState, partial: Partial<RoomState>) {
   const time = 'baseTime' in partial ? partial.baseTime! : effectiveTime(state);
   state.isPlaying = partial.isPlaying ?? state.isPlaying;
-  state.sourceUrl = 'sourceUrl' in partial ? (partial.sourceUrl ?? null) : state.sourceUrl;
-  if ('sourceUrl' in partial && partial.sourceUrl) state.sourceExpired = false;
+  if ('sourceUrl' in partial) {
+    state.sourceUrl = partial.sourceUrl ?? null;
+    state.sourceExpiresAt = state.sourceUrl ? linkExpiresAt(state.sourceUrl) : null;
+    state.sourceExpired = false;
+  }
   state.baseTime = time;
   state.updatedAt = Date.now();
   state.version += 1;
 }
 
-async function getOrCreate(sessionId: string): Promise<RoomState | null> {
+function clearExpiryTimer(state: RoomState) {
+  if (state.expiryTimer) {
+    clearTimeout(state.expiryTimer);
+    state.expiryTimer = null;
+  }
+}
+
+/**
+ * Broadcast the expiry transition exactly once. The margin matches the one
+ * used to stop serving the link, so the UI flips at the same instant the
+ * player would otherwise start getting 403s.
+ */
+function scheduleExpiry(io: Server, state: RoomState) {
+  clearExpiryTimer(state);
+  if (state.sourceExpiresAt === null) return;
+
+  const delay = (state.sourceExpiresAt - LINK_EXPIRY_MARGIN_SECONDS) * 1000 - Date.now();
+  if (delay <= 0) return;
+
+  state.expiryTimer = setTimeout(() => {
+    state.expiryTimer = null;
+    const time = effectiveTime(state);
+    state.isPlaying = false;
+    state.baseTime = time;
+    state.updatedAt = Date.now();
+    state.version += 1;
+    void persistPosition(state);
+    io.to(state.sessionId).emit('room:state', snapshot(state));
+  }, delay);
+}
+
+async function getOrCreate(io: Server, sessionId: string): Promise<RoomState | null> {
   const existing = rooms.get(sessionId);
   if (existing) return existing;
 
   const row = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!row) return null;
 
+  let sourceUrl: string | null = null;
+  let sourceExpired = false;
+
+  if (row.sourceUrlEnc) {
+    if (!isLinkEncryptionConfigured()) {
+      console.warn('[rooms] LINK_KEY no está configurada: el link guardado no se puede leer.');
+    } else {
+      const decrypted = decryptLink(row.sourceUrlEnc);
+      if (!decrypted) {
+        console.warn('[rooms] No se pudo desencriptar el link guardado de la sesión.');
+      } else if (isLinkExpired(decrypted)) {
+        sourceExpired = true;
+      } else {
+        sourceUrl = decrypted;
+      }
+    }
+  }
+
+  const storedExpiresAt = row.sourceExpiresAt
+    ? Math.floor(row.sourceExpiresAt.getTime() / 1000)
+    : null;
+
   const state: RoomState = {
     sessionId,
-    sourceUrl: null,
-    sourceExpired: false,
+    sourceUrl,
+    sourceExpiresAt: storedExpiresAt ?? (sourceUrl ? linkExpiresAt(sourceUrl) : null),
+    sourceExpired,
     isPlaying: false,
     baseTime: row.positionSeconds,
     updatedAt: Date.now(),
     version: 1,
+    expiryTimer: null,
     members: new Map(),
   };
   rooms.set(sessionId, state);
+  scheduleExpiry(io, state);
   return state;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function persistLink(state: RoomState, sourceUrl: string) {
+  if (!isLinkEncryptionConfigured()) {
+    console.warn('[rooms] LINK_KEY no está configurada: el link queda sólo en memoria.');
+    return;
+  }
+
+  try {
+    const expiresAt = linkExpiresAt(sourceUrl);
+    await prisma.session.update({
+      where: { id: state.sessionId },
+      data: {
+        sourceUrlEnc: encryptLink(sourceUrl),
+        sourceExpiresAt: expiresAt === null ? null : new Date(expiresAt * 1000),
+      },
+    });
+  } catch (error) {
+    console.error('[rooms] No se pudo guardar el link encriptado:', error);
+  }
 }
 
 export function registerRooms(io: Server) {
@@ -151,7 +219,7 @@ export function registerRooms(io: Server) {
     socket.on('room:join', async (payload: { roomId: string }) => {
       if (!payload?.roomId) return;
 
-      const state = await getOrCreate(payload.roomId);
+      const state = await getOrCreate(io, payload.roomId);
       if (!state) {
         socket.emit('room:error', { message: 'La sesión no existe.' });
         return;
@@ -166,13 +234,19 @@ export function registerRooms(io: Server) {
       socket.to(sessionId).emit('room:state', view);
     });
 
-    socket.on('room:load', (payload: { sourceUrl?: string }) => {
+    socket.on('room:load', async (payload: { sourceUrl?: string }) => {
       if (!sessionId) return;
+      const roomId = sessionId;
       const sourceUrl = payload?.sourceUrl?.trim();
       if (!sourceUrl) return;
 
-      const state = rooms.get(sessionId);
+      const state = rooms.get(roomId);
       if (!state) return;
+
+      if (!isHttpUrl(sourceUrl)) {
+        socket.emit('room:error', { message: 'Ese link no es una URL http(s) válida.' });
+        return;
+      }
 
       if (isLinkExpired(sourceUrl)) {
         socket.emit('room:error', {
@@ -184,7 +258,10 @@ export function registerRooms(io: Server) {
       // Keep the saved position: the session resumes where it was left, and
       // entering/leaving without playing must not wipe the minutes.
       commit(state, { sourceUrl, isPlaying: false });
-      io.to(sessionId).emit('room:state', snapshot(state));
+      scheduleExpiry(io, state);
+      // Persist before broadcasting so a client refresh sees the new metadata.
+      await persistLink(state, sourceUrl);
+      io.to(roomId).emit('room:state', snapshot(state));
     });
 
     socket.on('room:play', () => {
@@ -239,7 +316,9 @@ export function registerRooms(io: Server) {
       void socket.leave(sessionId);
 
       if (state.members.size === 0) {
-        // No members, no link: nothing to keep.
+        // No members, no in-memory link. The encrypted copy stays in the DB so
+        // the session can be resumed while the link is still valid.
+        clearExpiryTimer(state);
         rooms.delete(sessionId);
       } else {
         io.to(sessionId).emit('room:state', snapshot(state));
