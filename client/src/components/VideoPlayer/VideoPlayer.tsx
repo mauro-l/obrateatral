@@ -77,21 +77,23 @@ export default function VideoPlayer({
   }, [src, videoRef]);
 
   return (
-    <div className="player-shell">
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        preload="metadata"
-        aria-label="Reproductor de video"
-      >
-        Tu navegador no soporta el elemento de video.
-      </video>
+    <>
+      <div className="player-shell">
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label="Reproductor de video"
+        >
+          Tu navegador no soporta el elemento de video.
+        </video>
+      </div>
       {error ? (
         <p className="error-banner" role="alert">
           {error}
         </p>
       ) : null}
-    </div>
+    </>
   );
 }

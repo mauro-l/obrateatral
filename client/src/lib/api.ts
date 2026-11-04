@@ -1,4 +1,4 @@
-import type { Session } from './types';
+import type { Session, SessionLink } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -43,6 +43,8 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ name }),
       }),
+    /** Decrypted link, for the copy button. Works even after it expired. */
+    link: (id: string) => request<SessionLink>(`/api/sessions/${id}/link`),
   },
   me: () => request<SessionUser>('/api/auth/me'),
   login: (name: string, password: string) =>

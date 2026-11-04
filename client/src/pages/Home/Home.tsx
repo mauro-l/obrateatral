@@ -50,7 +50,7 @@ export default function Home() {
         <h1>Sesiones</h1>
         <p>
           Cada encuentro es una sesión: le ponés nombre y la app guarda por dónde van.
-          El link del estudio se pega dentro, y no queda guardado.
+          El link del estudio se guarda encriptado y se reutiliza mientras siga vigente.
         </p>
       </div>
 
@@ -88,10 +88,19 @@ export default function Home() {
             <li key={session.id}>
               <Link className="session-row" to={`/sesion/${session.id}`}>
                 <span className="session-name">{session.name}</span>
-                <span className="session-min">
-                  {session.positionSeconds >= 60
-                    ? `van ${formatPosition(session.positionSeconds)}`
-                    : 'sin empezar'}
+                <span className="session-meta">
+                  {session.hasLink ? (
+                    <span
+                      className={`link-badge ${session.linkExpired ? 'is-expired' : 'is-valid'}`}
+                    >
+                      {session.linkExpired ? 'link vencido' : 'link guardado'}
+                    </span>
+                  ) : null}
+                  <span className="session-min">
+                    {session.positionSeconds >= 60
+                      ? `van ${formatPosition(session.positionSeconds)}`
+                      : 'sin empezar'}
+                  </span>
                 </span>
               </Link>
             </li>

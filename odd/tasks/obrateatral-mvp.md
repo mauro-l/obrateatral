@@ -42,6 +42,11 @@ S15. Modelo (b) — la sesión es la entidad central:
        `<video src>`, sin CORS).
      - Si el link declara vencimiento (`s`+`e`), se muestra y se rechaza el vencido;
        si no lo declara, no se asume nada y sólo se reporta el error del player.
+
+     > **Cambio (2026-11-04)**: esta regla quedó reemplazada por
+     > `odd/tasks/obrateatral-encrypted-links-mobile.md`: el link ahora se persiste
+     > encriptado (AES-256-GCM) para reutilizarlo mientras siga vigente, y se
+     > completó la UI mobile.
 S14. El link del estudio dice cuándo vence (`s` = emitido, `e` = duración, 14400 s).
      La app lo parsea: muestra la hora de vencimiento, rechaza links ya vencidos al
      cargarlos y descarta de la sala un link vencido (nunca lo sirve al player, que
@@ -216,3 +221,9 @@ WebSocket. Base elegida: Supabase (el proyecto configurado en el MCP no respond�
 
 Auth (resuelta por el usuario en sesión): opción B — dos cuentas fijas con bcrypt y
 cookie httpOnly de sesión. Credenciales definitivas pendientes de pedir al desplegar.
+
+L10 (2026-11-04): el usuario pidió persistir el link encriptado y completar mobile.
+Revierte S15/L9 por decisión explícita. Se documentó el límite real (el server
+desencripta para reproducir; protege contra fuga de DB, no contra usuarios ni
+pedidos legales). Implementación y verificación en
+`odd/tasks/obrateatral-encrypted-links-mobile.md`.
