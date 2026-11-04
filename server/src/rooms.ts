@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { prisma } from './db.js';
 import { sessionFromCookieHeader, verifySessionToken } from './auth.js';
@@ -9,6 +10,10 @@ import {
 } from './linkExpiry.js';
 
 type Member = { userId: string; name: string };
+type RoomMessageKind = 'text' | 'reaction';
+
+const QUICK_REACTIONS = new Set(['😂', '🤣', '😅', '❤️', '👏', '👍']);
+const MAX_ROOM_MESSAGE_LENGTH = 80;
 
 type RoomState = {
   sessionId: string;
@@ -214,6 +219,17 @@ export function registerRooms(io: Server) {
       name: (socket.data.user?.name as string) ?? 'Invitado',
     });
 
+    const emitRoomMessage = (kind: RoomMessageKind, text: string) => {
+      if (!sessionId) return;
+      io.to(sessionId).emit('room:message', {
+        id: randomUUID(),
+        name: member().name,
+        text,
+        kind,
+        sentAt: Date.now(),
+      });
+    };
+
     let sessionId: string | null = null;
 
     socket.on('room:join', async (payload: { roomId: string }) => {
@@ -262,6 +278,20 @@ export function registerRooms(io: Server) {
       // Persist before broadcasting so a client refresh sees the new metadata.
       await persistLink(state, sourceUrl);
       io.to(roomId).emit('room:state', snapshot(state));
+    });
+
+    socket.on('room:message', (payload: { kind?: string; text?: string }) => {
+      if (!sessionId || !rooms.has(sessionId) || typeof payload?.text !== 'string') return;
+
+      if (payload.kind === 'reaction') {
+        if (QUICK_REACTIONS.has(payload.text)) emitRoomMessage('reaction', payload.text);
+        return;
+      }
+
+      if (payload.kind !== 'text') return;
+      const text = payload.text.trim();
+      if (!text || text.length > MAX_ROOM_MESSAGE_LENGTH) return;
+      emitRoomMessage('text', text);
     });
 
     socket.on('room:play', () => {

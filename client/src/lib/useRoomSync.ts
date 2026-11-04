@@ -4,6 +4,16 @@ import type { Socket } from 'socket.io-client';
 import { getSocket } from './socket';
 
 export type Member = { id: string; name: string };
+export type RoomMessageKind = 'text' | 'reaction';
+export const ROOM_MESSAGE_LIFETIME_MS = 5000;
+export type RoomMessage = {
+  id: string;
+  roomId: string;
+  name: string;
+  text: string;
+  kind: RoomMessageKind;
+  sentAt: number;
+};
 
 export type RoomView = {
   sessionId: string;
@@ -35,6 +45,7 @@ export function useRoomSync({
 
   const [connected, setConnected] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [roomMessages, setRoomMessages] = useState<RoomMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sourceExpired, setSourceExpired] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -46,10 +57,19 @@ export function useRoomSync({
   /** Set right before we move the element ourselves. Our seeking/seeked events are not user intent. */
   const programmaticSeek = useRef(false);
   const lastSeekEmitted = useRef<number | null>(null);
+  const messageTimeouts = useRef(new Map<string, number>());
 
   useEffect(() => {
     loadedSrcRef.current = loadedSrc;
   }, [loadedSrc]);
+
+  useEffect(() => {
+    const timeouts = messageTimeouts.current;
+    return () => {
+      timeouts.forEach((timeout) => window.clearTimeout(timeout));
+      timeouts.clear();
+    };
+  }, []);
 
   /** Apply an authoritative server state to the <video> element. */
   const applyToVideo = useCallback(
@@ -105,6 +125,7 @@ export function useRoomSync({
   useEffect(() => {
     if (!roomId) return;
 
+    const activeMessageTimeouts = messageTimeouts.current;
     const socket = getSocket();
     socketRef.current = socket;
 
@@ -124,11 +145,32 @@ export function useRoomSync({
     const onError = (payload: { message?: string }) => {
       setError(payload?.message ?? 'No se pudo cargar el link.');
     };
+    const onRoomMessage = (message: Omit<RoomMessage, 'roomId'>) => {
+      if (
+        !message ||
+        typeof message.id !== 'string' ||
+        typeof message.name !== 'string' ||
+        typeof message.text !== 'string' ||
+        (message.kind !== 'text' && message.kind !== 'reaction') ||
+        typeof message.sentAt !== 'number'
+      ) {
+        return;
+      }
+
+      const received = { ...message, roomId };
+      setRoomMessages((current) => [...current.slice(-3), received]);
+      const timeout = window.setTimeout(() => {
+        setRoomMessages((current) => current.filter((item) => item.id !== message.id));
+        activeMessageTimeouts.delete(message.id);
+      }, ROOM_MESSAGE_LIFETIME_MS);
+      activeMessageTimeouts.set(message.id, timeout);
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('room:state', onState);
     socket.on('room:error', onError);
+    socket.on('room:message', onRoomMessage);
 
     if (socket.connected) {
       setConnected(true);
@@ -140,6 +182,7 @@ export function useRoomSync({
       socket.off('disconnect', onDisconnect);
       socket.off('room:state', onState);
       socket.off('room:error', onError);
+      socket.off('room:message', onRoomMessage);
       socket.emit('room:leave', { roomId });
     };
   }, [roomId, applyRemoteState]);
@@ -216,5 +259,21 @@ export function useRoomSync({
     [roomId],
   );
 
-  return { connected, members, loadVideo, error, sourceExpired, expiresAt };
+  const sendRoomMessage = useCallback((text: string, kind: RoomMessageKind) => {
+    const socket = socketRef.current;
+    if (!socket?.connected) return false;
+    socket.emit('room:message', { text, kind });
+    return true;
+  }, []);
+
+  return {
+    connected,
+    members,
+    loadVideo,
+    roomMessages,
+    sendRoomMessage,
+    error,
+    sourceExpired,
+    expiresAt,
+  };
 }

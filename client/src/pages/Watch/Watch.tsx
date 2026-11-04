@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
 import VideoPlayer from '../../components/VideoPlayer/VideoPlayer';
+import RoomQuickMessages from '../../components/RoomQuickMessages/RoomQuickMessages';
 import { useRoomSync } from '../../lib/useRoomSync';
 import { useCountdown } from '../../lib/useCountdown';
 import { copyText } from '../../lib/clipboard';
@@ -35,7 +36,16 @@ export default function Watch() {
     refreshSession();
   }, [refreshSession]);
 
-  const { connected, members, loadVideo, error, sourceExpired, expiresAt } = useRoomSync({
+  const {
+    connected,
+    members,
+    loadVideo,
+    roomMessages,
+    sendRoomMessage,
+    error,
+    sourceExpired,
+    expiresAt,
+  } = useRoomSync({
     roomId: sessionId,
     videoRef,
     loadedSrc,
@@ -107,6 +117,27 @@ export default function Watch() {
 
       <div className="watch-layout">
         <div>
+          <div className="sync-status mobile-sync-status" role="status">
+            <span
+              className={`dot ${connected ? 'dot-online' : 'dot-connecting'}`}
+              aria-hidden="true"
+            />
+            <span>
+              {connected
+                ? `Sincronizados (${members.length} ${members.length === 1 ? 'persona' : 'personas'})`
+                : 'Conectando con la sala…'}
+            </span>
+            {connected && members.length > 0 ? (
+              <ul className="member-list" aria-label="Personas en la sala">
+                {members.map((member) => (
+                  <li key={member.id} className="member-chip">
+                    {member.name}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
           {loadError ? (
             <p className="error-banner" role="alert">
               {loadError}
@@ -262,6 +293,15 @@ export default function Watch() {
           ) : null}
         </aside>
       </div>
+
+      {sessionId ? (
+        <RoomQuickMessages
+          roomId={sessionId}
+          messages={roomMessages}
+          connected={connected}
+          onSend={sendRoomMessage}
+        />
+      ) : null}
     </>
   );
 }
