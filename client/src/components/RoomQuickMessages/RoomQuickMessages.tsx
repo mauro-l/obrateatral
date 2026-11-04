@@ -1,56 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import {
   type RoomMessage,
   type RoomMessageKind,
 } from '../../lib/useRoomSync';
+import { DEFAULT_QUICK_MESSAGES } from '../../lib/useQuickMessages';
 
-const STORAGE_KEY = 'obrateatral:quick-messages:v1';
-const DEFAULT_MESSAGES = ['Ya vuelvo', 'Espera 5', 'Pongo play'];
 const REACTIONS = ['😂', '🤣', '😅', '❤️', '👏', '👍'];
-const MAX_CUSTOM_MESSAGES = 8;
-const MAX_MESSAGE_LENGTH = 80;
-
-function readCustomMessages(): string[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const parsed: unknown = stored ? JSON.parse(stored) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((message): message is string => typeof message === 'string')
-      .map((message) => message.trim())
-      .filter((message) => message.length > 0 && message.length <= MAX_MESSAGE_LENGTH)
-      .slice(0, MAX_CUSTOM_MESSAGES);
-  } catch {
-    return [];
-  }
-}
 
 export default function RoomQuickMessages({
   roomId,
   messages,
   connected,
   onSend,
+  customMessages,
 }: {
   roomId: string;
   messages: RoomMessage[];
   connected: boolean;
   onSend: (text: string, kind: RoomMessageKind) => boolean;
+  customMessages: string[];
 }) {
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [customMessages, setCustomMessages] = useState(readCustomMessages);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(customMessages));
-    } catch {
-      // Messaging still works when browser storage is unavailable.
-    }
-  }, [customMessages]);
 
   const closePanel = () => {
     setOpen(false);
@@ -60,20 +31,6 @@ export default function RoomQuickMessages({
   const send = (text: string, kind: RoomMessageKind) => {
     if (!connected || !onSend(text, kind)) return;
     closePanel();
-  };
-
-  const addCustomMessage = (event: FormEvent) => {
-    event.preventDefault();
-    const text = draft.trim();
-    if (!text || text.length > MAX_MESSAGE_LENGTH || customMessages.length >= MAX_CUSTOM_MESSAGES) {
-      return;
-    }
-    if (customMessages.some((message) => message.toLocaleLowerCase() === text.toLocaleLowerCase())) {
-      return;
-    }
-
-    setCustomMessages((current) => [...current, text]);
-    setDraft('');
   };
 
   const visibleMessages = messages.filter((message) => message.roomId === roomId);
@@ -93,20 +50,19 @@ export default function RoomQuickMessages({
       </button>
 
       {open ? (
-        <section className="quick-message-panel" id="room-quick-messages-panel" aria-label="Mensajes rápidos">
-          <div className="quick-message-panel-header">
-            <h2>Mensajes rápidos</h2>
-            <button
-              type="button"
-              className="quick-message-close"
-              aria-label="Cerrar mensajes rápidos"
-              onClick={closePanel}
-            >
-              ×
-            </button>
-          </div>
-
-          {!connected ? <p className="quick-message-offline">Conectando con la sala…</p> : null}
+        <section
+          className="quick-message-panel"
+          id="room-quick-messages-panel"
+          aria-label="Mensajes rápidos"
+        >
+          <button
+            type="button"
+            className="quick-message-close"
+            aria-label="Cerrar mensajes rápidos"
+            onClick={closePanel}
+          >
+            ×
+          </button>
 
           <div className="quick-message-section">
             <h3>Reacciones</h3>
@@ -129,9 +85,9 @@ export default function RoomQuickMessages({
           <div className="quick-message-section">
             <h3>Frases</h3>
             <div className="quick-message-list">
-              {[...DEFAULT_MESSAGES, ...customMessages].map((message, index) => (
+              {[...DEFAULT_QUICK_MESSAGES, ...customMessages].map((message) => (
                 <button
-                  key={`${index}-${message}`}
+                  key={message}
                   type="button"
                   className="quick-message-option"
                   disabled={!connected}
@@ -143,61 +99,6 @@ export default function RoomQuickMessages({
             </div>
           </div>
 
-          <div className="quick-message-editor">
-            <button
-              type="button"
-              className="quick-message-edit-toggle"
-              aria-expanded={editing}
-              onClick={() => setEditing((current) => !current)}
-            >
-              {editing ? 'Listo' : 'Editar mis frases'}
-            </button>
-
-            {editing ? (
-              <div className="quick-message-edit-content">
-                <form className="quick-message-form" onSubmit={addCustomMessage}>
-                  <label htmlFor="quick-message-draft">Nueva frase</label>
-                  <div className="quick-message-input-row">
-                    <input
-                      id="quick-message-draft"
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                      maxLength={MAX_MESSAGE_LENGTH}
-                      placeholder="Escribí una frase corta"
-                      autoComplete="off"
-                    />
-                    <button
-                      type="submit"
-                      className="btn btn-small"
-                      disabled={!draft.trim() || customMessages.length >= MAX_CUSTOM_MESSAGES}
-                    >
-                      Añadir
-                    </button>
-                  </div>
-                  <small>{customMessages.length}/{MAX_CUSTOM_MESSAGES} frases personalizadas</small>
-                </form>
-
-                {customMessages.length > 0 ? (
-                  <ul className="quick-message-custom-list" aria-label="Mis frases personalizadas">
-                    {customMessages.map((message) => (
-                      <li key={message}>
-                        <span>{message}</span>
-                        <button
-                          type="button"
-                          aria-label={`Eliminar ${message}`}
-                          onClick={() =>
-                            setCustomMessages((current) => current.filter((item) => item !== message))
-                          }
-                        >
-                          ×
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
         </section>
       ) : null}
 

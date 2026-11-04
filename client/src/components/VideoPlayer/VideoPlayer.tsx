@@ -82,6 +82,7 @@ export default function VideoPlayer({
         <video
           ref={videoRef}
           controls
+          controlsList="nofullscreen"
           playsInline
           preload="metadata"
           aria-label="Reproductor de video"

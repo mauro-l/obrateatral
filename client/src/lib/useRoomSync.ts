@@ -5,7 +5,7 @@ import { getSocket } from './socket';
 
 export type Member = { id: string; name: string };
 export type RoomMessageKind = 'text' | 'reaction';
-export const ROOM_MESSAGE_LIFETIME_MS = 5000;
+export const ROOM_MESSAGE_LIFETIME_MS = 10000;
 export type RoomMessage = {
   id: string;
   roomId: string;

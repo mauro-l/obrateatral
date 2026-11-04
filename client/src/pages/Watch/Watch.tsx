@@ -5,7 +5,9 @@ import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
 import VideoPlayer from '../../components/VideoPlayer/VideoPlayer';
 import RoomQuickMessages from '../../components/RoomQuickMessages/RoomQuickMessages';
+import RoomQuickMessageSettings from '../../components/RoomQuickMessageSettings/RoomQuickMessageSettings';
 import { useRoomSync } from '../../lib/useRoomSync';
+import { useQuickMessages } from '../../lib/useQuickMessages';
 import { useCountdown } from '../../lib/useCountdown';
 import { copyText } from '../../lib/clipboard';
 
@@ -21,8 +23,58 @@ export default function Watch() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
+  const { customMessages, addCustomMessage, removeCustomMessage } = useQuickMessages();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerStageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setNativeFullscreen(document.fullscreenElement === playerStageRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    if (!cssFullscreen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCssFullscreen(false);
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [cssFullscreen]);
+
+  const togglePlayerFullscreen = async () => {
+    const stage = playerStageRef.current;
+    if (!stage) return;
+
+    if (document.fullscreenElement === stage) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    if (cssFullscreen) {
+      setCssFullscreen(false);
+      return;
+    }
+
+    if (document.fullscreenEnabled && stage.requestFullscreen) {
+      try {
+        await stage.requestFullscreen();
+        return;
+      } catch {
+        // Fall back to an in-page fullscreen layout when the browser denies the request.
+      }
+    }
+
+    setCssFullscreen(true);
+  };
 
   const refreshSession = useCallback(() => {
     if (!sessionId) return;
@@ -157,20 +209,45 @@ export default function Watch() {
             </p>
           ) : null}
 
-          {loadedSrc && !expiredNow ? (
-            <VideoPlayer src={loadedSrc} videoRef={videoRef} />
-          ) : (
-            <div className="player-empty">
-              <p>
-                {expiredNow
-                  ? 'El link guardado ya no sirve para reproducir.'
-                  : 'Pegá el link del estudio para empezar la sesión.'}
-              </p>
-              <button className="btn" onClick={loadTestStream}>
-                Probar con un HLS de prueba
-              </button>
-            </div>
-          )}
+          <div
+            className={`watch-player-stage${cssFullscreen ? ' is-css-fullscreen' : ''}`}
+            ref={playerStageRef}
+          >
+            {loadedSrc && !expiredNow ? (
+              <VideoPlayer src={loadedSrc} videoRef={videoRef} />
+            ) : (
+              <div className="player-empty">
+                <p>
+                  {expiredNow
+                    ? 'El link guardado ya no sirve para reproducir.'
+                    : 'Pegá el link del estudio para empezar la sesión.'}
+                </p>
+                <button className="btn" onClick={loadTestStream}>
+                  Probar con un HLS de prueba
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="stage-fullscreen-toggle"
+              aria-label={nativeFullscreen || cssFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              aria-pressed={nativeFullscreen || cssFullscreen}
+              onClick={togglePlayerFullscreen}
+            >
+              <span aria-hidden="true">{nativeFullscreen || cssFullscreen ? '⤢' : '⛶'}</span>
+            </button>
+
+            {sessionId ? (
+              <RoomQuickMessages
+                roomId={sessionId}
+                messages={roomMessages}
+                connected={connected}
+                onSend={sendRoomMessage}
+                customMessages={customMessages}
+              />
+            ) : null}
+          </div>
         </div>
 
         <aside className="panel" aria-label="Sala compartida">
@@ -264,6 +341,12 @@ export default function Watch() {
             )}
           </div>
 
+          <RoomQuickMessageSettings
+            customMessages={customMessages}
+            onAdd={addCustomMessage}
+            onRemove={removeCustomMessage}
+          />
+
           <div className="sync-status" role="status">
             <span
               className={`dot ${connected ? 'dot-online' : 'dot-connecting'}`}
@@ -294,14 +377,6 @@ export default function Watch() {
         </aside>
       </div>
 
-      {sessionId ? (
-        <RoomQuickMessages
-          roomId={sessionId}
-          messages={roomMessages}
-          connected={connected}
-          onSend={sendRoomMessage}
-        />
-      ) : null}
     </>
   );
 }
